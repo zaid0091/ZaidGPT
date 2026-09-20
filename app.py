@@ -26,8 +26,8 @@ if sys.platform == "win32":
 
 import torch
 
-# Enable multi-threaded CPU acceleration
-num_threads = os.cpu_count() or 4
+# Enable optimal multi-threaded CPU acceleration (8 threads optimal for Intel i7-1355U)
+num_threads = min(os.cpu_count() or 4, 8)
 torch.set_num_threads(num_threads)
 try:
     torch.set_num_interop_threads(num_threads)
@@ -78,6 +78,20 @@ class ChatRequest(BaseModel):
     messages: List[Dict[str, str]]
 
 
+@app.on_event("startup")
+async def startup_warmup():
+    print("[*] Pre-warming Neural Engine...")
+    model, tokenizer = get_engine()
+    # 1-token warm up pass to prime OpenMP threads and CPU cache
+    try:
+        inputs = tokenizer("Hello", return_tensors="pt")
+        with torch.inference_mode():
+            model.generate(**inputs, max_new_tokens=1, use_cache=True, do_sample=False)
+        print("[OK] Neural Engine pre-warmed for instant response!")
+    except Exception as e:
+        print("[!] Warmup exception:", e)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_ui():
     index_file = WEB_DIR / "index.html"
@@ -124,15 +138,15 @@ async def chat_stream(req: ChatRequest):
             inputs = tokenizer(prompt_text, return_tensors="pt")
             streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
+            # High-speed greedy search with KV-caching
             gen_kwargs = dict(
                 **inputs,
                 streamer=streamer,
-                max_new_tokens=512,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.9,
+                max_new_tokens=384,
+                do_sample=False,
                 use_cache=True,  # KV-Cache for O(1) step inference
                 pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id,
             )
 
             queue = asyncio.Queue()
