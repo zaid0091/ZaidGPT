@@ -1,6 +1,6 @@
 """
 FastAPI Streaming Server for ChatGPT Local Assistant.
-Optimized for multi-threaded, high-throughput CPU inference with KV-caching and zero latency.
+Powered by Qwen2.5-Coder-1.5B-Instruct (GGUF Q4_K_M) with AVX2 CPU acceleration via llama-cpp-python.
 """
 
 import os
@@ -11,39 +11,27 @@ from pathlib import Path
 from typing import List, Dict
 from threading import Thread
 
-# Redirect HuggingFace cache strictly to D: drive
-CACHE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".cache", "huggingface"))
-os.environ["HF_HOME"] = CACHE_DIR
-os.environ["HF_HUB_CACHE"] = os.path.join(CACHE_DIR, "hub")
-os.environ["TRANSFORMERS_CACHE"] = os.path.join(CACHE_DIR, "hub")
-os.environ["HUGGINGFACE_HUB_CACHE"] = os.path.join(CACHE_DIR, "hub")
-
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
-import torch
-
-# Enable optimal multi-threaded CPU acceleration (8 threads optimal for Intel i7-1355U)
-num_threads = min(os.cpu_count() or 4, 8)
-torch.set_num_threads(num_threads)
-try:
-    torch.set_num_interop_threads(num_threads)
-except Exception:
-    pass
-
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
+from llama_cpp import Llama
 
-MODEL_ID = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
+MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".cache", "models"))
+MODEL_PATH = os.path.join(MODEL_DIR, "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf")
+MODEL_NAME = "Qwen2.5-Coder-1.5B-Instruct (GGUF Q4_K_M)"
+
+# Set optimal threads for Intel i7-1355U
+num_threads = min(os.cpu_count() or 4, 8)
 
 # Initialize FastAPI App
-app = FastAPI(title="ChatGPT Local Assistant", version="2.0")
+app = FastAPI(title="ChatGPT Local Assistant", version="3.0")
 
 # Mount Static Files
 WEB_DIR = Path(__file__).parent / "web"
@@ -54,24 +42,22 @@ ENGINE = {}
 
 
 def get_engine():
-    if "model" not in ENGINE:
-        print(f"[*] Loading Neural Engine ({MODEL_ID}) in bfloat16 with {num_threads} CPU threads...")
-        try:
-            torch.set_flush_denormal(True)
-        except Exception:
-            pass
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=CACHE_DIR)
-        model = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID,
-            cache_dir=CACHE_DIR,
-            dtype=torch.bfloat16,
-            low_cpu_mem_usage=True,
+    if "llm" not in ENGINE:
+        if not os.path.exists(MODEL_PATH):
+            raise FileNotFoundError(
+                f"Model file not found at {MODEL_PATH}. Please wait for the download to complete."
+            )
+        print(f"[*] Loading GGUF Neural Engine ({os.path.basename(MODEL_PATH)}) with {num_threads} CPU threads...")
+        llm = Llama(
+            model_path=MODEL_PATH,
+            n_ctx=4096,
+            n_threads=num_threads,
+            n_batch=512,
+            verbose=False,
         )
-        model.eval()
-        ENGINE["model"] = model
-        ENGINE["tokenizer"] = tokenizer
-        print("[OK] Neural Engine is online and accelerated!")
-    return ENGINE["model"], ENGINE["tokenizer"]
+        ENGINE["llm"] = llm
+        print("[OK] GGUF Neural Engine is online and AVX2-accelerated!")
+    return ENGINE["llm"]
 
 
 class ChatRequest(BaseModel):
@@ -80,16 +66,20 @@ class ChatRequest(BaseModel):
 
 @app.on_event("startup")
 async def startup_warmup():
-    print("[*] Pre-warming Neural Engine...")
-    model, tokenizer = get_engine()
-    # 1-token warm up pass to prime OpenMP threads and CPU cache
+    print("[*] Checking Neural Engine...")
     try:
-        inputs = tokenizer("Hello", return_tensors="pt")
-        with torch.inference_mode():
-            model.generate(**inputs, max_new_tokens=1, use_cache=True, do_sample=False)
-        print("[OK] Neural Engine pre-warmed for instant response!")
+        if os.path.exists(MODEL_PATH):
+            llm = get_engine()
+            # 1-token warmup
+            llm.create_chat_completion(
+                messages=[{"role": "user", "content": "Hi"}],
+                max_tokens=1,
+            )
+            print("[OK] Neural Engine pre-warmed for instant response!")
+        else:
+            print(f"[!] Model file downloading to {MODEL_PATH}...")
     except Exception as e:
-        print("[!] Warmup exception:", e)
+        print("[!] Startup check:", e)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -100,12 +90,13 @@ async def serve_ui():
 
 @app.get("/api/health")
 async def health_check():
+    model_ready = os.path.exists(MODEL_PATH)
     return {
-        "status": "online",
-        "engine": MODEL_ID,
+        "status": "online" if model_ready else "downloading",
+        "engine": MODEL_NAME,
         "threads": num_threads,
-        "device": "cuda" if torch.cuda.is_available() else "cpu",
-        "cache_dir": CACHE_DIR,
+        "device": "cpu (AVX2)",
+        "model_path": MODEL_PATH,
     }
 
 
@@ -121,7 +112,7 @@ Follow these rules for every response:
 async def chat_stream(req: ChatRequest):
     async def generate_events():
         try:
-            model, tokenizer = get_engine()
+            llm = get_engine()
 
             # Format multi-turn conversation with system prompt
             formatted_messages = [
@@ -138,53 +129,38 @@ async def chat_stream(req: ChatRequest):
             for m in recent_history:
                 formatted_messages.append({"role": m["role"], "content": m["content"]})
 
-            prompt_text = tokenizer.apply_chat_template(
-                formatted_messages,
-                tokenize=False,
-                add_generation_prompt=True,
-            )
-
-            inputs = tokenizer(prompt_text, return_tensors="pt")
-            streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-
-            # High-speed greedy search with repetition penalty & KV-caching
-            gen_kwargs = dict(
-                **inputs,
-                streamer=streamer,
-                max_new_tokens=384,
-                do_sample=False,
-                repetition_penalty=1.15,
-                use_cache=True,  # KV-Cache for O(1) step inference
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-            )
-
             queue = asyncio.Queue()
             loop = asyncio.get_running_loop()
 
             def run_generation():
-                with torch.inference_mode():
-                    model.generate(**gen_kwargs)
-
-            def stream_producer():
                 try:
-                    for new_token in streamer:
-                        if new_token:
-                            loop.call_soon_threadsafe(queue.put_nowait, new_token)
+                    response_stream = llm.create_chat_completion(
+                        messages=formatted_messages,
+                        max_tokens=768,
+                        temperature=0.6,
+                        top_p=0.9,
+                        repeat_penalty=1.15,
+                        stream=True,
+                    )
+                    for chunk in response_stream:
+                        delta = chunk["choices"][0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            loop.call_soon_threadsafe(queue.put_nowait, content)
+                except Exception as ex:
+                    loop.call_soon_threadsafe(queue.put_nowait, f"\n\n[Error: {str(ex)}]")
                 finally:
                     loop.call_soon_threadsafe(queue.put_nowait, None)
 
-            thread_gen = Thread(target=run_generation, daemon=True)
-            thread_stream = Thread(target=stream_producer, daemon=True)
-            thread_gen.start()
-            thread_stream.start()
+            thread = Thread(target=run_generation, daemon=True)
+            thread.start()
 
             while True:
                 token = await queue.get()
                 if token is None:
                     break
-                
-                # Drain any accumulated tokens in batch for smooth throughput
+
+                # Drain accumulated tokens in batch for high FPS fluid rendering
                 chunk = token
                 while not queue.empty():
                     next_tok = queue.get_nowait()
@@ -211,8 +187,8 @@ async def chat_stream(req: ChatRequest):
 if __name__ == "__main__":
     import uvicorn
     print("\n" + "=" * 65)
-    print("🚀 Starting ChatGPT Assistant Server...")
-    print(f"⚡ CPU Threads: {num_threads} | Model: {MODEL_ID}")
+    print("🚀 Starting ChatGPT Assistant Server (GGUF Engine)...")
+    print(f"⚡ CPU Threads: {num_threads} | Model: {MODEL_NAME}")
     print("🌐 Open in your browser: http://127.0.0.1:8000")
     print("=" * 65 + "\n")
     uvicorn.run(app, host="127.0.0.1", port=8000)
