@@ -162,7 +162,61 @@ function App() {
     }
   }, [input]);
 
+  // Synchronously persist streaming text so mid-response page refreshes never lose content
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const activeText = streamBufferRef.current || displayedStreamRef.current;
+      if (activeText && activeSessionId) {
+        try {
+          const saved = localStorage.getItem(STORAGE_SESSIONS_KEY);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            const updated = parsed.map((s) => {
+              if (s.id === activeSessionId) {
+                const msgs = [...(s.messages || [])];
+                if (msgs.length > 0 && msgs[msgs.length - 1].role === "assistant") {
+                  msgs[msgs.length - 1].content = activeText;
+                } else {
+                  msgs.push({ role: "assistant", content: activeText });
+                }
+                return { ...s, messages: msgs, updatedAt: Date.now() };
+              }
+              return s;
+            });
+            localStorage.setItem(STORAGE_SESSIONS_KEY, JSON.stringify(updated));
+          }
+        } catch (e) {
+          console.error("Error saving on unload:", e);
+        }
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [activeSessionId]);
+
   const handleNewChat = () => {
+    const partial = streamBufferRef.current || displayedStreamRef.current;
+    const currentId = activeSessionId;
+    if (isGenerating && partial && currentId) {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === currentId
+            ? {
+                ...s,
+                messages:
+                  s.messages && s.messages.length > 0 && s.messages[s.messages.length - 1].role === "assistant"
+                    ? s.messages.map((m, idx) =>
+                        idx === s.messages.length - 1 ? { ...m, content: partial } : m
+                      )
+                    : [...(s.messages || []), { role: "assistant", content: partial }],
+                updatedAt: Date.now(),
+              }
+            : s
+        )
+      );
+    }
+
     cleanupStream();
     if (abortControllerRef.current) {
       try {
@@ -198,6 +252,28 @@ function App() {
 
   const handleSelectSession = (id) => {
     if (id === activeSessionId) return;
+
+    const partial = streamBufferRef.current || displayedStreamRef.current;
+    const currentId = activeSessionId;
+    if (isGenerating && partial && currentId) {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === currentId
+            ? {
+                ...s,
+                messages:
+                  s.messages && s.messages.length > 0 && s.messages[s.messages.length - 1].role === "assistant"
+                    ? s.messages.map((m, idx) =>
+                        idx === s.messages.length - 1 ? { ...m, content: partial } : m
+                      )
+                    : [...(s.messages || []), { role: "assistant", content: partial }],
+                updatedAt: Date.now(),
+              }
+            : s
+        )
+      );
+    }
+
     cleanupStream();
     if (abortControllerRef.current) {
       try {
@@ -369,17 +445,36 @@ function App() {
       );
       setCurrentStreamingText("");
     } catch (err) {
+      const partialText = streamBufferRef.current || displayedStreamRef.current;
       cleanupStream();
       if (err.name === "AbortError") {
         console.log("Generation aborted by user");
+        if (partialText) {
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === targetSessionId
+                ? {
+                    ...s,
+                    messages: [
+                      ...updatedMessages,
+                      { role: "assistant", content: partialText },
+                    ],
+                    updatedAt: Date.now(),
+                  }
+                : s
+            )
+          );
+        }
       } else {
         const isNetworkErr = err.message && (
           err.message.toLowerCase().includes("failed to fetch") ||
           err.message.toLowerCase().includes("network")
         );
         const errorMsg = isNetworkErr
-          ? "Connection to the local server was temporarily interrupted while restarting. Please try sending your message again."
+          ? "Connection to the local server was temporarily interrupted. Please try sending your message again."
           : `[Error: ${err.message}]`;
+
+        const finalContent = partialText ? `${partialText}\n\n${errorMsg}` : errorMsg;
 
         setSessions((prev) =>
           prev.map((s) =>
@@ -388,7 +483,7 @@ function App() {
                   ...s,
                   messages: [
                     ...updatedMessages,
-                    { role: "assistant", content: errorMsg },
+                    { role: "assistant", content: finalContent },
                   ],
                   updatedAt: Date.now(),
                 }
