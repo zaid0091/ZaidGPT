@@ -59,7 +59,13 @@ def chat(model_id: str = "HuggingFaceTB/SmolLM2-360M-Instruct"):
     messages = [
         {
             "role": "system",
-            "content": "You are a helpful, concise, and knowledgeable AI assistant. Provide complete, structured, and helpful answers.",
+            "content": (
+                "You are an expert AI assistant.\n"
+                "Follow these rules for every response:\n"
+                "1. Think step-by-step before answering complex questions.\n"
+                "2. Structure your answers with clear headings, bullet points, and clean markdown code blocks.\n"
+                "3. Be direct, factual, and concise without unnecessary fluff."
+            ),
         }
     ]
 

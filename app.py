@@ -109,6 +109,13 @@ async def health_check():
     }
 
 
+SYSTEM_PROMPT = """You are an expert AI assistant.
+Follow these rules for every response:
+1. Think step-by-step before answering complex questions.
+2. Structure your answers with clear headings, bullet points, and clean markdown code blocks.
+3. Be direct, factual, and concise without unnecessary fluff."""
+
+
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
     async def generate_events():
@@ -119,10 +126,7 @@ async def chat_stream(req: ChatRequest):
             formatted_messages = [
                 {
                     "role": "system",
-                    "content": (
-                        "You are a helpful, concise, and knowledgeable AI assistant. "
-                        "Directly, accurately, and strictly answer the user's latest query with clean markdown."
-                    ),
+                    "content": SYSTEM_PROMPT,
                 }
             ]
 
