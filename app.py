@@ -1,7 +1,6 @@
 """
-ZaidGPT Full-Stack Web Application Backend.
-Powered exclusively by ZaidGPT Instruct Engine (SmolLM2-360M-Instruct).
-Provides real-time SSE token streaming, markdown rendering, and multi-turn conversation memory.
+FastAPI Streaming Server for ChatGPT Local Assistant.
+Optimized for multi-threaded, high-throughput CPU inference with KV-caching and zero latency.
 """
 
 import os
@@ -26,6 +25,15 @@ if sys.platform == "win32":
         pass
 
 import torch
+
+# Enable multi-threaded CPU acceleration
+num_threads = os.cpu_count() or 4
+torch.set_num_threads(num_threads)
+try:
+    torch.set_num_interop_threads(num_threads)
+except Exception:
+    pass
+
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,7 +43,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStream
 MODEL_ID = "HuggingFaceTB/SmolLM2-360M-Instruct"
 
 # Initialize FastAPI App
-app = FastAPI(title="ZaidGPT AI Assistant", version="2.0")
+app = FastAPI(title="ChatGPT Local Assistant", version="2.0")
 
 # Mount Static Files
 WEB_DIR = Path(__file__).parent / "web"
@@ -47,7 +55,7 @@ ENGINE = {}
 
 def get_engine():
     if "model" not in ENGINE:
-        print(f"[*] Loading ZaidGPT Instruct Engine ({MODEL_ID})...")
+        print(f"[*] Loading Neural Engine ({MODEL_ID}) with {num_threads} CPU threads...")
         tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=CACHE_DIR)
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_ID,
@@ -57,7 +65,7 @@ def get_engine():
         model.eval()
         ENGINE["model"] = model
         ENGINE["tokenizer"] = tokenizer
-        print("[OK] ZaidGPT Engine is online and ready!")
+        print("[OK] Neural Engine is online and ready!")
     return ENGINE["model"], ENGINE["tokenizer"]
 
 
@@ -76,6 +84,7 @@ async def health_check():
     return {
         "status": "online",
         "engine": MODEL_ID,
+        "threads": num_threads,
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "cache_dir": CACHE_DIR,
     }
@@ -92,8 +101,8 @@ async def chat_stream(req: ChatRequest):
                 {
                     "role": "system",
                     "content": (
-                        "You are ZaidGPT, an expert, concise, and helpful AI software engineering and reasoning assistant. "
-                        "Provide complete, accurate, well-formatted answers with clear explanations and clean code blocks."
+                        "You are a helpful, concise, and knowledgeable AI assistant. "
+                        "Provide direct, structured, and helpful answers with clean markdown and code blocks."
                     ),
                 }
             ]
@@ -115,20 +124,26 @@ async def chat_stream(req: ChatRequest):
                 streamer=streamer,
                 max_new_tokens=512,
                 do_sample=True,
-                temperature=0.7,
+                temperature=0.6,
                 top_p=0.9,
                 repetition_penalty=1.1,
+                use_cache=True,  # KV-Cache for O(1) step inference
                 pad_token_id=tokenizer.eos_token_id,
             )
 
-            thread = Thread(target=model.generate, kwargs=gen_kwargs)
+            def run_generation():
+                with torch.inference_mode():
+                    model.generate(**gen_kwargs)
+
+            thread = Thread(target=run_generation)
             thread.start()
 
             for new_token in streamer:
                 if new_token:
                     payload = json.dumps({"token": new_token})
                     yield f"data: {payload}\n\n"
-                    await asyncio.sleep(0.005)
+                    # Minimal micro-yield for event loop without throttling
+                    await asyncio.sleep(0.0001)
 
             thread.join()
             yield "data: [DONE]\n\n"
@@ -144,7 +159,8 @@ async def chat_stream(req: ChatRequest):
 if __name__ == "__main__":
     import uvicorn
     print("\n" + "=" * 65)
-    print("🚀 Starting ZaidGPT AI Assistant Server...")
+    print("🚀 Starting ChatGPT Assistant Server...")
+    print(f"⚡ CPU Threads: {num_threads} | Model: {MODEL_ID}")
     print("🌐 Open in your browser: http://127.0.0.1:8000")
     print("=" * 65 + "\n")
     uvicorn.run(app, host="127.0.0.1", port=8000)
