@@ -47,16 +47,6 @@ document.addEventListener("DOMContentLoaded", () => {
     sidebar.classList.toggle("collapsed");
   });
 
-  // Engine Switcher
-  engineSelect.addEventListener("change", (e) => {
-    const names = {
-      instruct: "ZaidGPT Instruct Engine (SmolLM2)",
-      finetuned: "ZaidGPT Fine-Tuned (GPT-2)",
-      scratch: "ZaidGPT From-Scratch (Transformer+RAG)",
-    };
-    activeEngineName.textContent = names[e.target.value] || "ZaidGPT AI Engine";
-  });
-
   // Suggestion Cards
   suggestionCards.forEach((card) => {
     card.addEventListener("click", () => {
@@ -101,9 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const cursor = document.createElement("span");
     cursor.className = "cursor-blink";
     bodyEl.appendChild(cursor);
-
     let fullAssistantResponse = "";
-    const selectedEngine = engineSelect.value;
 
     try {
       const response = await fetch("/api/chat/stream", {
@@ -111,7 +99,6 @@ document.addEventListener("DOMContentLoaded", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: conversationHistory,
-          engine: selectedEngine,
         }),
       });
 

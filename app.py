@@ -1,6 +1,7 @@
 """
 ZaidGPT Full-Stack Web Application Backend.
-FastAPI Streaming server supporting SSE token-by-token generation and engine switching.
+Powered exclusively by ZaidGPT Instruct Engine (SmolLM2-360M-Instruct).
+Provides real-time SSE token streaming, markdown rendering, and multi-turn conversation memory.
 """
 
 import os
@@ -8,7 +9,8 @@ import sys
 import json
 import asyncio
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict
+from threading import Thread
 
 # Redirect HuggingFace cache strictly to D: drive
 CACHE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".cache", "huggingface"))
@@ -24,53 +26,43 @@ if sys.platform == "win32":
         pass
 
 import torch
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
-from threading import Thread
+
+MODEL_ID = "HuggingFaceTB/SmolLM2-360M-Instruct"
 
 # Initialize FastAPI App
-app = FastAPI(title="ZaidGPT Web UI", version="2.0")
+app = FastAPI(title="ZaidGPT AI Assistant", version="2.0")
 
 # Mount Static Files
 WEB_DIR = Path(__file__).parent / "web"
 app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
 
-# Global Engine Cache
-ENGINE_CACHE = {}
+# Singleton Engine
+ENGINE = {}
 
 
-def get_instruct_engine(model_id: str = "HuggingFaceTB/SmolLM2-360M-Instruct"):
-    if "instruct" not in ENGINE_CACHE:
-        print(f"[*] Loading Instruct Engine ({model_id})...")
-        tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=CACHE_DIR)
+def get_engine():
+    if "model" not in ENGINE:
+        print(f"[*] Loading ZaidGPT Instruct Engine ({MODEL_ID})...")
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=CACHE_DIR)
         model = AutoModelForCausalLM.from_pretrained(
-            model_id,
+            MODEL_ID,
             cache_dir=CACHE_DIR,
             dtype=torch.float32,
         )
         model.eval()
-        ENGINE_CACHE["instruct"] = {"model": model, "tokenizer": tokenizer, "id": model_id}
-        print("[OK] Instruct Engine online!")
-    return ENGINE_CACHE["instruct"]
-
-
-def get_finetuned_engine(model_path: str = "checkpoints/zaidgpt_finetuned"):
-    if "finetuned" not in ENGINE_CACHE:
-        print(f"[*] Loading Fine-Tuned Engine ({model_path})...")
-        tokenizer = AutoTokenizer.from_pretrained(model_path)
-        model = AutoModelForCausalLM.from_pretrained(model_path)
-        model.eval()
-        ENGINE_CACHE["finetuned"] = {"model": model, "tokenizer": tokenizer, "path": model_path}
-        print("[OK] Fine-Tuned Engine online!")
-    return ENGINE_CACHE["finetuned"]
+        ENGINE["model"] = model
+        ENGINE["tokenizer"] = tokenizer
+        print("[OK] ZaidGPT Engine is online and ready!")
+    return ENGINE["model"], ENGINE["tokenizer"]
 
 
 class ChatRequest(BaseModel):
     messages: List[Dict[str, str]]
-    engine: str = "instruct"  # instruct | finetuned | scratch
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -83,6 +75,7 @@ async def serve_ui():
 async def health_check():
     return {
         "status": "online",
+        "engine": MODEL_ID,
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "cache_dir": CACHE_DIR,
     }
@@ -92,105 +85,52 @@ async def health_check():
 async def chat_stream(req: ChatRequest):
     async def generate_events():
         try:
-            if req.engine == "instruct":
-                engine = get_instruct_engine()
-                model = engine["model"]
-                tokenizer = engine["tokenizer"]
+            model, tokenizer = get_engine()
 
-                # Apply chat template
-                formatted_messages = [
-                    {
-                        "role": "system",
-                        "content": "You are ZaidGPT, an expert AI assistant specializing in software engineering, system design, and coding. Provide direct, structured, and helpful answers.",
-                    }
-                ]
-                for m in req.messages:
-                    if m.get("role") in ["user", "assistant"]:
-                        formatted_messages.append({"role": m["role"], "content": m["content"]})
+            # Format multi-turn conversation with system prompt
+            formatted_messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are ZaidGPT, an expert, concise, and helpful AI software engineering and reasoning assistant. "
+                        "Provide complete, accurate, well-formatted answers with clear explanations and clean code blocks."
+                    ),
+                }
+            ]
+            for m in req.messages:
+                if m.get("role") in ["user", "assistant"]:
+                    formatted_messages.append({"role": m["role"], "content": m["content"]})
 
-                prompt_text = tokenizer.apply_chat_template(
-                    formatted_messages,
-                    tokenize=False,
-                    add_generation_prompt=True,
-                )
+            prompt_text = tokenizer.apply_chat_template(
+                formatted_messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
 
-                inputs = tokenizer(prompt_text, return_tensors="pt")
-                streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+            inputs = tokenizer(prompt_text, return_tensors="pt")
+            streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
-                gen_kwargs = dict(
-                    **inputs,
-                    streamer=streamer,
-                    max_new_tokens=400,
-                    do_sample=True,
-                    temperature=0.7,
-                    top_p=0.9,
-                    repetition_penalty=1.15,
-                    pad_token_id=tokenizer.eos_token_id,
-                )
+            gen_kwargs = dict(
+                **inputs,
+                streamer=streamer,
+                max_new_tokens=512,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9,
+                repetition_penalty=1.1,
+                pad_token_id=tokenizer.eos_token_id,
+            )
 
-                thread = Thread(target=model.generate, kwargs=gen_kwargs)
-                thread.start()
+            thread = Thread(target=model.generate, kwargs=gen_kwargs)
+            thread.start()
 
-                for new_token in streamer:
-                    if new_token:
-                        payload = json.dumps({"token": new_token})
-                        yield f"data: {payload}\n\n"
-                        await asyncio.sleep(0.005)
+            for new_token in streamer:
+                if new_token:
+                    payload = json.dumps({"token": new_token})
+                    yield f"data: {payload}\n\n"
+                    await asyncio.sleep(0.005)
 
-                thread.join()
-
-            elif req.engine == "finetuned":
-                engine = get_finetuned_engine()
-                model = engine["model"]
-                tokenizer = engine["tokenizer"]
-
-                last_user_msg = req.messages[-1]["content"] if req.messages else ""
-                prompt = f"User: {last_user_msg}\nAssistant: "
-                inputs = tokenizer(prompt, return_tensors="pt")
-                streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-
-                gen_kwargs = dict(
-                    **inputs,
-                    streamer=streamer,
-                    max_new_tokens=300,
-                    do_sample=True,
-                    temperature=0.7,
-                    top_p=0.9,
-                    repetition_penalty=1.2,
-                    no_repeat_ngram_size=3,
-                    pad_token_id=tokenizer.eos_token_id,
-                )
-
-                thread = Thread(target=model.generate, kwargs=gen_kwargs)
-                thread.start()
-
-                for new_token in streamer:
-                    if new_token:
-                        payload = json.dumps({"token": new_token})
-                        yield f"data: {payload}\n\n"
-                        await asyncio.sleep(0.005)
-
-                thread.join()
-
-            else:
-                # Fallback / From scratch
-                engine = get_instruct_engine()
-                model = engine["model"]
-                tokenizer = engine["tokenizer"]
-                inputs = tokenizer(req.messages[-1]["content"], return_tensors="pt")
-                streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-                thread = Thread(
-                    target=model.generate,
-                    kwargs=dict(**inputs, streamer=streamer, max_new_tokens=200),
-                )
-                thread.start()
-                for token in streamer:
-                    if token:
-                        payload = json.dumps({"token": token})
-                        yield f"data: {payload}\n\n"
-                        await asyncio.sleep(0.005)
-                thread.join()
-
+            thread.join()
             yield "data: [DONE]\n\n"
 
         except Exception as e:
@@ -204,7 +144,7 @@ async def chat_stream(req: ChatRequest):
 if __name__ == "__main__":
     import uvicorn
     print("\n" + "=" * 65)
-    print("🚀 Starting ZaidGPT Full-Stack Web Server...")
+    print("🚀 Starting ZaidGPT AI Assistant Server...")
     print("🌐 Open in your browser: http://127.0.0.1:8000")
     print("=" * 65 + "\n")
     uvicorn.run(app, host="127.0.0.1", port=8000)

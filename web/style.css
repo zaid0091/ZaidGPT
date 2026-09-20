@@ -148,35 +148,34 @@ body {
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.section-label {
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.8px;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-  display: block;
-}
-
-.select-wrapper {
-  position: relative;
-}
-
-.engine-select {
-  width: 100%;
+.engine-info-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 10px 12px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  font-weight: 500;
-  outline: none;
-  cursor: pointer;
-  transition: var(--transition-smooth);
 }
 
-.engine-select:focus, .engine-select:hover {
-  border-color: var(--border-active);
+.engine-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 8px var(--accent-cyan);
+  flex-shrink: 0;
+}
+
+.engine-model-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.engine-model-sub {
+  font-size: 0.7rem;
+  color: var(--text-muted);
 }
 
 /* Chat History List */
