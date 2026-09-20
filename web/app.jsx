@@ -406,11 +406,19 @@ function App() {
       }
     }, 16);
 
+    // Sanitize message history to exclude error notifications
+    const payloadMessages = updatedMessages.filter(
+      (m) =>
+        m.content &&
+        !m.content.includes("Connection to the local server was temporarily interrupted") &&
+        !m.content.startsWith("[Error:")
+    );
+
     try {
       const response = await fetch("/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: updatedMessages }),
+        body: JSON.stringify({ messages: payloadMessages }),
         signal: abortController.signal,
       });
 

@@ -50,8 +50,18 @@ async def lifespan(app: FastAPI):
         print("[!] Startup check:", e)
     yield
 
+from fastapi.middleware.cors import CORSMiddleware
+
 # Initialize FastAPI App with Lifespan
 app = FastAPI(title="ChatGPT Local Assistant", version="3.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Mount Static Files
 WEB_DIR = Path(__file__).parent / "web"
@@ -125,7 +135,13 @@ async def chat_stream(req: ChatRequest):
             ]
 
             # Use sliding context window (last 6 messages) to prevent topic bleeding in multi-turn chats
-            raw_history = [m for m in req.messages if m.get("role") in ["user", "assistant"]]
+            raw_history = [
+                m for m in req.messages
+                if m.get("role") in ["user", "assistant"]
+                and m.get("content", "").strip()
+                and not m.get("content", "").startswith("[Error:")
+                and "Connection to the local server was temporarily interrupted" not in m.get("content", "")
+            ]
             recent_history = raw_history[-6:] if len(raw_history) > 6 else raw_history
 
             for m in recent_history:
