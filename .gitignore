@@ -6,4 +6,7 @@ venv/
 
 # Checkpoints
 checkpoints/*.pt
+checkpoints/zaidgpt_finetuned/
+*.safetensors
+*.bin
 !checkpoints/README.md

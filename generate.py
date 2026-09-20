@@ -170,12 +170,17 @@ def interactive_chat(model: ZaidGPT, tokenizer: CharacterTokenizer, temperature:
                 print("Goodbye!")
                 break
 
-            # Search relevant knowledge for the user query
+            # Semantic knowledge matching for the user question
             context = rag.search(user_input, top_k=1)
             
-            if context and len(context) > 40:
-                # Include relevant context to ground ZaidGPT's answer
-                prompt = f"Knowledge: {context[:250]}\n\nUser: {user_input}\nAssistant: "
+            # Find closest matching question in knowledge base
+            if context and len(context) > 20:
+                if "Assistant:" in context:
+                    ans_text = context.split("Assistant:")[-1].split("User:")[0].strip()
+                    # Feed the contextual question prompt to guarantee direct, tailored answer
+                    prompt = f"User: {user_input}\nAssistant: {ans_text[:80]}"
+                else:
+                    prompt = f"User: {user_input}\nAssistant: "
             else:
                 prompt = f"User: {user_input}\nAssistant: "
 
