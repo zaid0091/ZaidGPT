@@ -28,20 +28,21 @@ else:
     print("[!] Warning: GPU not detected. Go to Runtime -> Change runtime type -> Select T4 GPU.")
 
 # -----------------------------------------------------------------------------
-# 2. Download Massive Dataset (TinyStories / Rich Knowledge Corpus)
+# 2. Load Encyclopedic Knowledge Dataset (Coding, Science, History, Math, Dialogue)
 # -----------------------------------------------------------------------------
-os.makedirs("data", exist_ok=True)
-data_file = "data/massive_train.txt"
+from data.download_knowledge import generate_immense_knowledge_corpus
 
-if not os.path.exists(data_file):
-    print("[*] Downloading high-density knowledge & reasoning dataset...")
-    # Downloads TinyStories sample (thousands of complete, rich English stories & dialogues)
-    url = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
-    urllib.request.urlretrieve(url, data_file)
-    print(f"[✓] Dataset downloaded! Size: {os.path.getsize(data_file) / 1e6:.2f} MB")
+os.makedirs("data", exist_ok=True)
+data_file = "data/train.txt"
+
+corpus_text = generate_immense_knowledge_corpus()
+with open(data_file, "w", encoding="utf-8") as f:
+    f.write(corpus_text)
 
 with open(data_file, "r", encoding="utf-8") as f:
     text = f.read()
+
+print(f"[✓] Encyclopedic Knowledge Base Loaded! Total Characters: {len(text):,}")
 
 # Build Character Tokenizer
 chars = sorted(list(set(text)))
