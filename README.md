@@ -1,80 +1,59 @@
-# 🧠 ZaidGPT: Custom Transformer LLM from Scratch
+# ChatGPT Local AI Assistant
 
-**ZaidGPT** is a complete, standalone Generative Pre-trained Transformer (GPT) language model built from first principles using PyTorch.
-
-Engineered specifically for balanced performance on systems with **8GB RAM** and **Intel UHD Graphics / Multi-Core CPUs**.
+A private, offline-capable, full-stack AI Assistant powered by a lightweight neural instruct engine with real-time token streaming and an authentic ChatGPT dark web interface.
 
 ---
 
-## 🏛️ Architecture Overview
+## 🚀 Quick Start
 
-ZaidGPT implements a modern Decoder-Only Transformer architecture:
-- **Token & Positional Embeddings**: Vector representations with learnable position encoding.
-- **Pre-LayerNorm Transformer Blocks**: Ensures stable gradient flow throughout deep layers.
-- **Multi-Head Causal Self-Attention**: Batched Query, Key, and Value projections with lower-triangular causal masking.
-- **Feed-Forward MLP**: $4\times$ expansion with GELU non-linear activations.
-- **Weight Tying**: Shares weights between token embeddings and the output LM head.
-- **Sampling Engine**: Supports Temperature scaling, Top-$k$ filtering, and Nucleus (Top-$p$) sampling with real-time token streaming.
+### 1. Install Dependencies
+```powershell
+pip install -r requirements.txt
+```
+
+### 2. Launch the Web Interface
+```powershell
+python app.py
+```
+Open your browser at: **[http://127.0.0.1:8000](http://127.0.0.1:8000)**
 
 ---
 
-## ⚡ Quick Start
+## 💻 Terminal CLI Mode
 
-### 1. Run Automated Unit Tests
-To verify all neural network blocks, attention mechanisms, and tokenizer pipelines:
-```bash
-python -m model.test_model
-```
-
-### 2. Train ZaidGPT
-Train the model on your training dataset with the CPU-optimized preset:
-```bash
-# Fast training (~800K parameters, 1000 steps)
-python train.py --preset tiny --iters 1000
-
-# Base training (~3.5M parameters, higher capacity)
-python train.py --preset base --iters 2500
-```
-
-### 3. Interactive Chat with ZaidGPT
-Launch the interactive terminal chat interface to converse with your model in real time:
-```bash
-python generate.py --interactive
-```
-
-### 4. Single-Prompt Generation
-```bash
-python generate.py --prompt "User: What is artificial intelligence?\nAssistant:" --temperature 0.7
+To chat directly in your terminal:
+```powershell
+python chat_instruct.py
 ```
 
 ---
 
-## ⚙️ Model Presets
+## ✨ Features
 
-| Preset | Parameters | Layers | Heads | Embedding Dim | Context Size | Ideal For |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`tiny`** | ~800K | 4 | 4 | 128 | 64 | Lightning-fast CPU training & testing |
-| **`base`** | ~3.5M | 6 | 6 | 192 | 128 | High-capacity reasoning within 8GB RAM |
+- **ChatGPT UI Replica**: Authentic dark theme (`#212121` workspace & `#171717` sidebar), floating input capsule, and responsive layout.
+- **Real-Time Word Streaming**: Server-Sent Events (SSE) streaming with inline blinking cursor and 3-dots typing loader.
+- **Full History Persistence**: Conversations and multi-session side panel history automatically persist in `localStorage`.
+- **Code Highlighting & Copy**: Formatted code blocks with syntax highlighting and 1-click **Copy code** buttons.
+- **Zero Cloud Costs / Offline Capable**: Runs locally on CPU/GPU without third-party API keys or recurring charges.
 
 ---
 
-## 📂 Project Structure
+## 📁 Project Structure
 
 ```
-ZaidGPT/
-├── config.py              # Hyperparameters, presets, and CPU thread tuning
-├── train.py               # Training loop with AdamW, cosine decay, and checkpointing
-├── generate.py            # Streaming text generation & interactive terminal chat
-├── model/
-│   ├── transformer.py     # CausalSelfAttention, FeedForward, TransformerBlock, ZaidGPT
-│   ├── language_model.py  # Model exports
-│   └── test_model.py      # Architecture unit tests
-├── tokenizer/
-│   └── tokenizer.py       # CharacterTokenizer with JSON vocabulary persistence
-├── data/
-│   ├── dataset.py         # Text loading, train/val split, and batch sampling
-│   ├── train.txt          # Multi-turn conversational & technical corpus
-│   └── vocab.json         # Serialized vocabulary mappings
-└── checkpoints/
-    └── zaidgpt_best.pt    # Best model weights & training state
+├── app.py              # FastAPI full-stack streaming backend server
+├── chat_instruct.py    # Terminal CLI chat runner
+├── requirements.txt    # Python package dependencies
+├── web/                # Full-Stack React Frontend
+│   ├── index.html      # HTML5 container & React 18 / Babel mounting
+│   ├── app.jsx         # React JSX application logic & history sync
+│   └── style.css       # ChatGPT dark theme stylesheet
+├── model/              # Custom Decoder-Only Transformer architecture
+├── tokenizer/          # Custom Character tokenizer
+└── data/               # Knowledge base datasets and web scraper
 ```
+
+---
+
+## 📜 License
+MIT License

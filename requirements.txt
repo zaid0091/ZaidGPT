@@ -1,5 +1,7 @@
 torch
-numpy
 transformers
-datasets
+fastapi
+uvicorn
 accelerate
+datasets
+numpy
