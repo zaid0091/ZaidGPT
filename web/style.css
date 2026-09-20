@@ -74,7 +74,7 @@ body {
   align-items: center;
 }
 
-.icon-btn-ghost {
+.icon-btn-ghost, .new-chat-icon-btn {
   background: transparent;
   border: none;
   color: var(--text-subtle);
@@ -87,25 +87,7 @@ body {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.icon-btn-ghost:hover {
-  background-color: var(--input-bg);
-  color: var(--text-main);
-}
-
-.new-chat-icon-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-subtle);
-  padding: 8px;
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.new-chat-icon-btn:hover {
+.icon-btn-ghost:hover, .new-chat-icon-btn:hover {
   background-color: var(--input-bg);
   color: var(--text-main);
 }
@@ -144,11 +126,7 @@ body {
   transition: background-color 0.15s ease;
 }
 
-.history-item:hover {
-  background-color: var(--input-bg);
-}
-
-.history-item.active {
+.history-item:hover, .history-item.active {
   background-color: var(--input-bg);
 }
 
@@ -475,15 +453,16 @@ body {
   background-color: #0d0d0d;
 }
 
-/* Typing Cursor */
+/* Precise Inline Typing Cursor Attached to Words */
 .streaming-cursor {
   display: inline-block;
-  width: 8px;
-  height: 16px;
+  width: 7px;
+  height: 15px;
   background-color: #ffffff;
-  margin-left: 4px;
-  vertical-align: middle;
-  animation: cursorBlink 0.8s infinite;
+  margin-left: 3px;
+  vertical-align: -2px;
+  border-radius: 1px;
+  animation: cursorBlink 0.75s infinite;
 }
 
 @keyframes cursorBlink {

@@ -7,144 +7,24 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <!-- Markdown & Code Syntax Highlighting -->
+  
+  <!-- React 18 & Babel Standalone for native JSX support -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Markdown & Code Highlighting -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="chatgpt-layout">
-    <!-- Collapsible Sidebar -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-top">
-        <button class="icon-btn-ghost" id="sidebarCollapseBtn" title="Close sidebar">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="9" y1="3" x2="9" y2="21"></line>
-          </svg>
-        </button>
-        <button class="new-chat-icon-btn" id="newChatBtn" title="New chat">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 20h9"></path>
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-          </svg>
-        </button>
-      </div>
+  <!-- React Root Container -->
+  <div id="root"></div>
 
-      <!-- Navigation & History -->
-      <div class="sidebar-content">
-        <div class="history-group-title">Today</div>
-        <div class="history-list" id="historyList">
-          <div class="history-item active" data-chat-id="current">
-            <span class="history-item-text">Current Conversation</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Sidebar User Profile Footer -->
-      <div class="sidebar-bottom">
-        <div class="user-profile-row">
-          <div class="user-avatar-circle">U</div>
-          <div class="user-details">
-            <span class="user-name">Local User</span>
-            <span class="user-plan">Free Plan</span>
-          </div>
-        </div>
-      </div>
-    </aside>
-
-    <!-- Main Workspace -->
-    <main class="chat-workspace">
-      <!-- Top Navigation Bar -->
-      <header class="top-nav">
-        <div class="nav-left">
-          <button class="icon-btn-ghost" id="sidebarOpenBtn" title="Open sidebar">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="9" y1="3" x2="9" y2="21"></line>
-            </svg>
-          </button>
-          
-          <!-- Model Selector Pill -->
-          <div class="model-pill">
-            <span class="model-title">ChatGPT</span>
-            <span class="model-sub">4o mini</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </div>
-        </div>
-
-        <div class="nav-right">
-          <button class="clear-btn" id="clearChatBtn" title="Clear chat">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"></polyline>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-            </svg>
-          </button>
-        </div>
-      </header>
-
-      <!-- Scrollable Message Viewport -->
-      <div class="chat-scroll-container" id="chatScrollContainer">
-        <!-- Hero Welcome State -->
-        <div class="hero-screen" id="heroScreen">
-          <h1 class="hero-heading">What can I help with today?</h1>
-          
-          <div class="prompt-chips-grid">
-            <button class="chip-card" data-prompt="Explain Git workflows, commits, branching, and rebasing.">
-              <span class="chip-title">Explain Git workflows</span>
-              <span class="chip-desc">Commits, branching & rebasing</span>
-            </button>
-            <button class="chip-card" data-prompt="Write a clean REST API in FastAPI with Pydantic validation and error handling.">
-              <span class="chip-title">FastAPI REST endpoint</span>
-              <span class="chip-desc">Pydantic models and CRUD</span>
-            </button>
-            <button class="chip-card" data-prompt="Explain Rust ownership, borrowing, and lifetimes with code examples.">
-              <span class="chip-title">Rust ownership & borrowing</span>
-              <span class="chip-desc">Memory safety without GC</span>
-            </button>
-            <button class="chip-card" data-prompt="What is Docker and how do containers differ from Virtual Machines?">
-              <span class="chip-title">Docker vs Virtual Machines</span>
-              <span class="chip-desc">Container architecture & namespaces</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Chat Messages Container -->
-        <div class="messages-wrapper" id="messagesWrapper"></div>
-      </div>
-
-      <!-- Floating Capsule Input Bar -->
-      <div class="input-area-wrapper">
-        <form class="input-capsule-form" id="chatForm">
-          <div class="input-capsule">
-            <textarea
-              id="messageInput"
-              class="chat-input"
-              placeholder="Message ChatGPT..."
-              rows="1"
-              autofocus
-            ></textarea>
-            
-            <div class="input-actions-bar">
-              <button type="submit" class="send-circle-btn" id="sendBtn" title="Send message" disabled>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <line x1="12" y1="19" x2="12" y2="5"></line>
-                  <polyline points="5 12 12 5 19 12"></polyline>
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div class="disclaimer-text">
-            ChatGPT can make mistakes. Check important info.
-          </div>
-        </form>
-      </div>
-    </main>
-  </div>
-
-  <script src="/static/app.js"></script>
+  <!-- React JSX Application Script -->
+  <script type="text/babel" src="/static/app.jsx"></script>
 </body>
 </html>
