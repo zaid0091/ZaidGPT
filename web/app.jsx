@@ -373,6 +373,14 @@ function App() {
       if (err.name === "AbortError") {
         console.log("Generation aborted by user");
       } else {
+        const isNetworkErr = err.message && (
+          err.message.toLowerCase().includes("failed to fetch") ||
+          err.message.toLowerCase().includes("network")
+        );
+        const errorMsg = isNetworkErr
+          ? "Connection to the local server was temporarily interrupted while restarting. Please try sending your message again."
+          : `[Error: ${err.message}]`;
+
         setSessions((prev) =>
           prev.map((s) =>
             s.id === targetSessionId
@@ -380,7 +388,7 @@ function App() {
                   ...s,
                   messages: [
                     ...updatedMessages,
-                    { role: "assistant", content: `[Error: ${err.message}]` },
+                    { role: "assistant", content: errorMsg },
                   ],
                   updatedAt: Date.now(),
                 }
