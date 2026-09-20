@@ -5,9 +5,8 @@ venv/
 .env
 .cache/
 
-# Checkpoints
-checkpoints/*.pt
-checkpoints/zaidgpt_finetuned/
+# Checkpoints & Weights
+checkpoints/
+*.pt
 *.safetensors
 *.bin
-!checkpoints/README.md

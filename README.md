@@ -1,6 +1,6 @@
 # ChatGPT Local AI Assistant
 
-A private, offline-capable, full-stack AI Assistant powered by a lightweight neural instruct engine with real-time token streaming and an authentic ChatGPT dark web interface.
+A fast, private, offline-capable AI Assistant powered by a lightweight neural instruct engine with real-time word-by-word streaming and an authentic ChatGPT dark interface.
 
 ---
 
@@ -21,7 +21,7 @@ Open your browser at: **[http://127.0.0.1:8000](http://127.0.0.1:8000)**
 
 ## 💻 Terminal CLI Mode
 
-To chat directly in your terminal:
+To chat directly inside your terminal:
 ```powershell
 python chat_instruct.py
 ```
@@ -44,13 +44,11 @@ python chat_instruct.py
 ├── app.py              # FastAPI full-stack streaming backend server
 ├── chat_instruct.py    # Terminal CLI chat runner
 ├── requirements.txt    # Python package dependencies
-├── web/                # Full-Stack React Frontend
-│   ├── index.html      # HTML5 container & React 18 / Babel mounting
-│   ├── app.jsx         # React JSX application logic & history sync
-│   └── style.css       # ChatGPT dark theme stylesheet
-├── model/              # Custom Decoder-Only Transformer architecture
-├── tokenizer/          # Custom Character tokenizer
-└── data/               # Knowledge base datasets and web scraper
+├── README.md           # Project documentation and quickstart
+└── web/                # React JSX ChatGPT Frontend
+    ├── index.html      # HTML5 container & React 18 / Babel mounting
+    ├── app.jsx         # React components, SSE streaming & localStorage history
+    └── style.css       # ChatGPT dark theme stylesheet
 ```
 
 ---
