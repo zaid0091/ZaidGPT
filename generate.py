@@ -16,12 +16,12 @@ def load_model_and_tokenizer(checkpoint_path: str = None, vocab_path: str = "dat
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
     if checkpoint_path is None:
-        if Path("checkpoints/zaidgpt_colab_best.pt").exists():
-            checkpoint_path = "checkpoints/zaidgpt_colab_best.pt"
-        elif Path("checkpoints/zaidgpt_best.pt").exists():
+        if Path("checkpoints/zaidgpt_best.pt").exists():
             checkpoint_path = "checkpoints/zaidgpt_best.pt"
-        else:
+        elif Path("checkpoints/zaidgpt_latest.pt").exists():
             checkpoint_path = "checkpoints/zaidgpt_latest.pt"
+        else:
+            checkpoint_path = "checkpoints/zaidgpt_colab_best.pt"
 
     ckpt_file = Path(checkpoint_path)
     if not ckpt_file.exists():
@@ -165,13 +165,8 @@ def interactive_chat(model: ZaidGPT, tokenizer: CharacterTokenizer, temperature:
             context = rag.search(user_input, top_k=1)
             
             if context and len(context) > 40:
-                # If exact knowledge match found, use it to ground the response
-                if "Assistant:" in context:
-                    # Clean direct answer
-                    ans_part = context.split("Assistant:")[-1].split("User:")[0].strip()
-                    prompt = f"User: {user_input}\nAssistant: {ans_part[:120]}"
-                else:
-                    prompt = f"User: {user_input}\nAssistant: "
+                # Include relevant context to ground ZaidGPT's answer
+                prompt = f"Knowledge: {context[:250]}\n\nUser: {user_input}\nAssistant: "
             else:
                 prompt = f"User: {user_input}\nAssistant: "
 
