@@ -250,6 +250,19 @@ function App() {
                 </div>
               ))}
 
+              {/* 3-Dots Typing Indicator right when message is sent */}
+              {isGenerating && !currentStreamingText && (
+                <div className="message-row assistant">
+                  <div className="message-body">
+                    <div className="typing-dots-indicator">
+                      <span className="dot"></span>
+                      <span className="dot"></span>
+                      <span className="dot"></span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Live Streaming Response with Inline Cursor */}
               {isGenerating && currentStreamingText && (
                 <div className="message-row assistant">
