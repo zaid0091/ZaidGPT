@@ -1,0 +1,9 @@
+# Python & Virtualenv
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Checkpoints
+checkpoints/*.pt
+!checkpoints/README.md
