@@ -35,6 +35,13 @@ def load_model_and_tokenizer(checkpoint_path: str = None, vocab_path: str = "dat
         tokenizer.vocab = checkpoint["vocab"]
         tokenizer.stoi = {ch: i for i, ch in enumerate(tokenizer.vocab)}
         tokenizer.itos = {i: ch for i, ch in enumerate(tokenizer.vocab)}
+    elif isinstance(checkpoint.get("config"), dict) and checkpoint["config"].get("vocab_size") == 65:
+        # Exact 65-character Shakespeare vocabulary from Karpathy char-rnn
+        shakespeare_vocab = list("\n !$&',-.3:;?ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+        tokenizer = CharacterTokenizer()
+        tokenizer.vocab = shakespeare_vocab
+        tokenizer.stoi = {ch: i for i, ch in enumerate(tokenizer.vocab)}
+        tokenizer.itos = {i: ch for i, ch in enumerate(tokenizer.vocab)}
     elif Path(vocab_path).exists():
         tokenizer = CharacterTokenizer(vocab_file=Path(vocab_path))
     else:
@@ -62,6 +69,8 @@ def load_model_and_tokenizer(checkpoint_path: str = None, vocab_path: str = "dat
     model.eval()
 
     print(f"[ZaidGPT] Loaded checkpoint from {checkpoint_path} (Trained for {checkpoint.get('iter_num', 'N/A')} steps)")
+    if checkpoint.get('iter_num', 0) < 50:
+        print("[!] Note: This checkpoint was saved at Step 1 (model is still training in the background). Please wait for training to finish for coherent responses!")
     return model, tokenizer, config
 
 
