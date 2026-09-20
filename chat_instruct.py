@@ -1,13 +1,12 @@
-"""
-ZaidGPT Supercharged Instruct Assistant (Powered by Qwen2.5-0.5B-Instruct / SmolLM2).
-Provides direct, structured, ChatGPT-grade explanations and code on CPU/GPU.
-"""
-
 import os
 import sys
 
-# Redirect HuggingFace cache to D: drive to prevent C: drive full errors
-os.environ["HF_HOME"] = os.path.abspath(os.path.join(os.path.dirname(__file__), ".cache", "huggingface"))
+# Redirect HuggingFace cache strictly to D: drive (where plenty of disk space is available)
+CACHE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".cache", "huggingface"))
+os.environ["HF_HOME"] = CACHE_DIR
+os.environ["HF_HUB_CACHE"] = os.path.join(CACHE_DIR, "hub")
+os.environ["TRANSFORMERS_CACHE"] = os.path.join(CACHE_DIR, "hub")
+os.environ["HUGGINGFACE_HUB_CACHE"] = os.path.join(CACHE_DIR, "hub")
 
 # Ensure UTF-8 output on Windows consoles
 if sys.platform == "win32":
@@ -30,12 +29,13 @@ def chat(model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"):
     print("Type your message and press Enter. Type 'exit' or 'quit' to quit.")
     print("=" * 65 + "\n")
 
-    print(f"[*] Loading {model_id} (first time will download ~600MB)...")
+    print(f"[*] Loading {model_id} into D: drive cache...")
     try:
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=CACHE_DIR)
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
-            torch_dtype=torch.float32 if device == "cpu" else torch.float16,
+            cache_dir=CACHE_DIR,
+            dtype=torch.float32 if device == "cpu" else torch.float16,
             device_map="auto" if device == "cuda" else None,
         )
         if device == "cpu":
