@@ -5,6 +5,8 @@ Connects to the fine-tuned model and generates fluent, ChatGPT-level responses.
 
 import os
 import sys
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer, TextStreamer
 
 # Redirect HuggingFace cache to D: drive to prevent C: drive full errors
 os.environ["HF_HOME"] = os.path.abspath(os.path.join(os.path.dirname(__file__), ".cache", "huggingface"))
