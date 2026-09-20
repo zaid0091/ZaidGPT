@@ -118,9 +118,15 @@ function App() {
   
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
-  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
-  const messages = activeSession ? activeSession.messages : [];
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0] || {
+    id: generateId(),
+    title: "New chat",
+    messages: [],
+    updatedAt: Date.now(),
+  };
+  const messages = activeSession ? activeSession.messages || [] : [];
 
   useEffect(() => {
     try {
@@ -145,7 +151,36 @@ function App() {
   }, [input]);
 
   const handleNewChat = () => {
-    if (isGenerating) return;
+    // Abort any ongoing stream immediately
+    if (abortControllerRef.current) {
+      try {
+        abortControllerRef.current.abort();
+      } catch (e) {}
+      abortControllerRef.current = null;
+    }
+    setIsGenerating(false);
+    setCurrentStreamingText("");
+    setInput("");
+
+    // If current session is already an empty new chat, just focus
+    if (activeSession && (!activeSession.messages || activeSession.messages.length === 0)) {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+      }
+      return;
+    }
+
+    // Check if there is already an empty session in the list
+    const existingEmpty = sessions.find((s) => !s.messages || s.messages.length === 0);
+    if (existingEmpty) {
+      setActiveSessionId(existingEmpty.id);
+      if (textareaRef.current) {
+        setTimeout(() => textareaRef.current && textareaRef.current.focus(), 50);
+      }
+      return;
+    }
+
+    // Create fresh session
     const newSession = {
       id: generateId(),
       title: "New chat",
@@ -154,22 +189,38 @@ function App() {
     };
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newSession.id);
-    setCurrentStreamingText("");
-    setInput("");
-    if (textareaRef.current) textareaRef.current.focus();
+    if (textareaRef.current) {
+      setTimeout(() => textareaRef.current && textareaRef.current.focus(), 50);
+    }
   };
 
   const handleSelectSession = (id) => {
-    if (isGenerating) return;
-    setActiveSessionId(id);
+    if (id === activeSessionId) return;
+    if (abortControllerRef.current) {
+      try {
+        abortControllerRef.current.abort();
+      } catch (e) {}
+      abortControllerRef.current = null;
+    }
+    setIsGenerating(false);
     setCurrentStreamingText("");
     setInput("");
-    if (textareaRef.current) textareaRef.current.focus();
+    setActiveSessionId(id);
+    if (textareaRef.current) {
+      setTimeout(() => textareaRef.current && textareaRef.current.focus(), 50);
+    }
   };
 
   const handleDeleteSession = (id, e) => {
     e.stopPropagation();
-    if (isGenerating) return;
+    if (id === activeSessionId && abortControllerRef.current) {
+      try {
+        abortControllerRef.current.abort();
+      } catch (err) {}
+      abortControllerRef.current = null;
+      setIsGenerating(false);
+      setCurrentStreamingText("");
+    }
 
     setSessions((prev) => {
       const remaining = prev.filter((s) => s.id !== id);
@@ -194,8 +245,16 @@ function App() {
     const text = (textToSend || input).trim();
     if (!text || isGenerating) return;
 
+    if (abortControllerRef.current) {
+      try {
+        abortControllerRef.current.abort();
+      } catch (e) {}
+    }
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     const userMessage = { role: "user", content: text };
-    const currentMessages = activeSession.messages;
+    const currentMessages = activeSession.messages || [];
     const updatedMessages = [...currentMessages, userMessage];
 
     const newTitle =
@@ -203,9 +262,11 @@ function App() {
         ? text.slice(0, 28) + (text.length > 28 ? "..." : "")
         : activeSession.title;
 
+    const targetSessionId = activeSessionId;
+
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === activeSessionId
+        s.id === targetSessionId
           ? { ...s, title: newTitle, messages: updatedMessages, updatedAt: Date.now() }
           : s
       )
@@ -220,6 +281,7 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: updatedMessages }),
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
@@ -229,8 +291,9 @@ function App() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let fullAssistantText = "";
+      let streamFinished = false;
 
-      while (true) {
+      while (!streamFinished) {
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -240,7 +303,10 @@ function App() {
         for (const line of lines) {
           if (line.startsWith("data: ")) {
             const dataStr = line.replace("data: ", "").trim();
-            if (dataStr === "[DONE]") break;
+            if (dataStr === "[DONE]") {
+              streamFinished = true;
+              break;
+            }
             try {
               const data = JSON.parse(dataStr);
               if (data.token) {
@@ -248,8 +314,10 @@ function App() {
                 setCurrentStreamingText(fullAssistantText);
               }
             } catch (err) {
-              fullAssistantText += dataStr;
-              setCurrentStreamingText(fullAssistantText);
+              if (dataStr && !dataStr.startsWith("{")) {
+                fullAssistantText += dataStr;
+                setCurrentStreamingText(fullAssistantText);
+              }
             }
           }
         }
@@ -257,7 +325,7 @@ function App() {
 
       setSessions((prev) =>
         prev.map((s) =>
-          s.id === activeSessionId
+          s.id === targetSessionId
             ? {
                 ...s,
                 messages: [
@@ -271,23 +339,28 @@ function App() {
       );
       setCurrentStreamingText("");
     } catch (err) {
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeSessionId
-            ? {
-                ...s,
-                messages: [
-                  ...updatedMessages,
-                  { role: "assistant", content: `[Error: ${err.message}]` },
-                ],
-                updatedAt: Date.now(),
-              }
-            : s
-        )
-      );
+      if (err.name === "AbortError") {
+        console.log("Generation aborted by user");
+      } else {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === targetSessionId
+              ? {
+                  ...s,
+                  messages: [
+                    ...updatedMessages,
+                    { role: "assistant", content: `[Error: ${err.message}]` },
+                  ],
+                  updatedAt: Date.now(),
+                }
+              : s
+          )
+        );
+      }
       setCurrentStreamingText("");
     } finally {
       setIsGenerating(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -322,6 +395,16 @@ function App() {
               <path d="M12 20h9"></path>
               <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
             </svg>
+          </button>
+        </div>
+
+        <div className="sidebar-new-chat-wrapper">
+          <button className="sidebar-new-chat-btn" onClick={handleNewChat}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>New chat</span>
           </button>
         </div>
 
