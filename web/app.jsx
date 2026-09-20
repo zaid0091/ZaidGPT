@@ -119,6 +119,9 @@ function App() {
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const streamBufferRef = useRef("");
+  const displayedStreamRef = useRef("");
+  const streamTimerRef = useRef(null);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0] || {
     id: generateId(),
@@ -127,6 +130,15 @@ function App() {
     updatedAt: Date.now(),
   };
   const messages = activeSession ? activeSession.messages || [] : [];
+
+  const cleanupStream = () => {
+    if (streamTimerRef.current) {
+      clearInterval(streamTimerRef.current);
+      streamTimerRef.current = null;
+    }
+    streamBufferRef.current = "";
+    displayedStreamRef.current = "";
+  };
 
   useEffect(() => {
     try {
@@ -151,7 +163,7 @@ function App() {
   }, [input]);
 
   const handleNewChat = () => {
-    // Abort any ongoing stream immediately
+    cleanupStream();
     if (abortControllerRef.current) {
       try {
         abortControllerRef.current.abort();
@@ -196,6 +208,7 @@ function App() {
 
   const handleSelectSession = (id) => {
     if (id === activeSessionId) return;
+    cleanupStream();
     if (abortControllerRef.current) {
       try {
         abortControllerRef.current.abort();
@@ -213,11 +226,14 @@ function App() {
 
   const handleDeleteSession = (id, e) => {
     e.stopPropagation();
-    if (id === activeSessionId && abortControllerRef.current) {
-      try {
-        abortControllerRef.current.abort();
-      } catch (err) {}
-      abortControllerRef.current = null;
+    if (id === activeSessionId) {
+      cleanupStream();
+      if (abortControllerRef.current) {
+        try {
+          abortControllerRef.current.abort();
+        } catch (err) {}
+        abortControllerRef.current = null;
+      }
       setIsGenerating(false);
       setCurrentStreamingText("");
     }
@@ -245,6 +261,7 @@ function App() {
     const text = (textToSend || input).trim();
     if (!text || isGenerating) return;
 
+    cleanupStream();
     if (abortControllerRef.current) {
       try {
         abortControllerRef.current.abort();
@@ -275,6 +292,22 @@ function App() {
     setInput("");
     setIsGenerating(true);
     setCurrentStreamingText("");
+    streamBufferRef.current = "";
+    displayedStreamRef.current = "";
+
+    // Start 60fps smooth typewriter ticker
+    streamTimerRef.current = setInterval(() => {
+      const buffer = streamBufferRef.current;
+      const current = displayedStreamRef.current;
+      if (buffer.length > current.length) {
+        const diff = buffer.length - current.length;
+        const step = diff > 80 ? 6 : diff > 30 ? 3 : diff > 8 ? 2 : 1;
+        const nextLen = Math.min(buffer.length, current.length + step);
+        const nextText = buffer.slice(0, nextLen);
+        displayedStreamRef.current = nextText;
+        setCurrentStreamingText(nextText);
+      }
+    }, 16);
 
     try {
       const response = await fetch("/api/chat/stream", {
@@ -311,17 +344,24 @@ function App() {
               const data = JSON.parse(dataStr);
               if (data.token) {
                 fullAssistantText += data.token;
-                setCurrentStreamingText(fullAssistantText);
+                streamBufferRef.current = fullAssistantText;
               }
             } catch (err) {
               if (dataStr && !dataStr.startsWith("{")) {
                 fullAssistantText += dataStr;
-                setCurrentStreamingText(fullAssistantText);
+                streamBufferRef.current = fullAssistantText;
               }
             }
           }
         }
       }
+
+      // Smoothly flush any remaining characters in the typing queue
+      while (displayedStreamRef.current.length < streamBufferRef.current.length) {
+        await new Promise((r) => setTimeout(r, 16));
+      }
+
+      cleanupStream();
 
       setSessions((prev) =>
         prev.map((s) =>
@@ -339,6 +379,7 @@ function App() {
       );
       setCurrentStreamingText("");
     } catch (err) {
+      cleanupStream();
       if (err.name === "AbortError") {
         console.log("Generation aborted by user");
       } else {
@@ -359,6 +400,7 @@ function App() {
       }
       setCurrentStreamingText("");
     } finally {
+      cleanupStream();
       setIsGenerating(false);
       abortControllerRef.current = null;
     }
@@ -601,9 +643,14 @@ function App() {
   );
 }
 
-// Markdown Renderer Component with proper code blocks & Inline Streaming Cursor
-function MarkdownRenderer({ content, isStreaming = false }) {
-  let parsedHtml = marked.parse(content || "");
+// Markdown Renderer Component with proper code blocks & Inline Streaming Cursor (Memoized for high FPS)
+const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStreaming = false }) {
+  let parsedHtml = "";
+  try {
+    parsedHtml = marked.parse(content || "");
+  } catch (err) {
+    parsedHtml = escapeHtml(content || "");
+  }
 
   if (isStreaming) {
     if (parsedHtml.endsWith("</p>\n") || parsedHtml.endsWith("</p>")) {
@@ -619,7 +666,7 @@ function MarkdownRenderer({ content, isStreaming = false }) {
       dangerouslySetInnerHTML={{ __html: parsedHtml }}
     />
   );
-}
+});
 
 // Mount React App
 const root = ReactDOM.createRoot(document.getElementById("root"));

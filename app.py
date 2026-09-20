@@ -55,17 +55,22 @@ ENGINE = {}
 
 def get_engine():
     if "model" not in ENGINE:
-        print(f"[*] Loading Neural Engine ({MODEL_ID}) with {num_threads} CPU threads...")
+        print(f"[*] Loading Neural Engine ({MODEL_ID}) in bfloat16 with {num_threads} CPU threads...")
+        try:
+            torch.set_flush_denormal(True)
+        except Exception:
+            pass
         tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=CACHE_DIR)
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_ID,
             cache_dir=CACHE_DIR,
-            dtype=torch.float32,
+            dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
         )
         model.eval()
         ENGINE["model"] = model
         ENGINE["tokenizer"] = tokenizer
-        print("[OK] Neural Engine is online and ready!")
+        print("[OK] Neural Engine is online and accelerated!")
     return ENGINE["model"], ENGINE["tokenizer"]
 
 
@@ -124,28 +129,51 @@ async def chat_stream(req: ChatRequest):
                 streamer=streamer,
                 max_new_tokens=512,
                 do_sample=True,
-                temperature=0.6,
+                temperature=0.7,
                 top_p=0.9,
-                repetition_penalty=1.1,
                 use_cache=True,  # KV-Cache for O(1) step inference
                 pad_token_id=tokenizer.eos_token_id,
             )
+
+            queue = asyncio.Queue()
+            loop = asyncio.get_running_loop()
 
             def run_generation():
                 with torch.inference_mode():
                     model.generate(**gen_kwargs)
 
-            thread = Thread(target=run_generation)
-            thread.start()
+            def stream_producer():
+                try:
+                    for new_token in streamer:
+                        if new_token:
+                            loop.call_soon_threadsafe(queue.put_nowait, new_token)
+                finally:
+                    loop.call_soon_threadsafe(queue.put_nowait, None)
 
-            for new_token in streamer:
-                if new_token:
-                    payload = json.dumps({"token": new_token})
-                    yield f"data: {payload}\n\n"
-                    # Minimal micro-yield for event loop without throttling
-                    await asyncio.sleep(0.0001)
+            thread_gen = Thread(target=run_generation, daemon=True)
+            thread_stream = Thread(target=stream_producer, daemon=True)
+            thread_gen.start()
+            thread_stream.start()
 
-            thread.join()
+            while True:
+                token = await queue.get()
+                if token is None:
+                    break
+                
+                # Drain any accumulated tokens in batch for smooth throughput
+                chunk = token
+                while not queue.empty():
+                    next_tok = queue.get_nowait()
+                    if next_tok is None:
+                        payload = json.dumps({"token": chunk})
+                        yield f"data: {payload}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                    chunk += next_tok
+
+                payload = json.dumps({"token": chunk})
+                yield f"data: {payload}\n\n"
+
             yield "data: [DONE]\n\n"
 
         except Exception as e:
