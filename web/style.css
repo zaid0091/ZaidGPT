@@ -115,14 +115,13 @@ body {
 .history-item {
   display: flex;
   align-items: center;
-  padding: 10px 12px;
+  justify-content: space-between;
+  padding: 8px 10px 8px 12px;
   border-radius: 8px;
   color: var(--text-main);
   font-size: 0.88rem;
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  position: relative;
   transition: background-color 0.15s ease;
 }
 
@@ -131,8 +130,33 @@ body {
 }
 
 .history-item-text {
+  flex: 1;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-right: 6px;
+}
+
+.history-delete-btn {
+  background: transparent;
+  border: none;
+  color: #8e8e8e;
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.history-item:hover .history-delete-btn {
+  display: flex;
+}
+
+.history-delete-btn:hover {
+  color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.15);
 }
 
 /* Sidebar Bottom User Profile */

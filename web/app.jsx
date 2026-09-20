@@ -10,8 +10,45 @@ marked.setOptions({
   },
 });
 
+const STORAGE_SESSIONS_KEY = "chatgpt_local_sessions";
+const STORAGE_ACTIVE_KEY = "chatgpt_local_active_id";
+
+function generateId() {
+  return "session_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6);
+}
+
+function loadInitialSessions() {
+  try {
+    const saved = localStorage.getItem(STORAGE_SESSIONS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error("Error loading sessions from localStorage", e);
+  }
+  const defaultSession = {
+    id: generateId(),
+    title: "New chat",
+    messages: [],
+    updatedAt: Date.now(),
+  };
+  return [defaultSession];
+}
+
+function loadInitialActiveId(sessions) {
+  const savedActive = localStorage.getItem(STORAGE_ACTIVE_KEY);
+  if (savedActive && sessions.some((s) => s.id === savedActive)) {
+    return savedActive;
+  }
+  return sessions[0].id;
+}
+
 function App() {
-  const [messages, setMessages] = useState([]);
+  const [sessions, setSessions] = useState(loadInitialSessions);
+  const [activeSessionId, setActiveSessionId] = useState(() => loadInitialActiveId(sessions));
   const [input, setInput] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -20,12 +57,26 @@ function App() {
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
 
+  // Active session object
+  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  const messages = activeSession ? activeSession.messages : [];
+
+  // Persist sessions to localStorage whenever sessions or activeSessionId change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_SESSIONS_KEY, JSON.stringify(sessions));
+      localStorage.setItem(STORAGE_ACTIVE_KEY, activeSessionId);
+    } catch (e) {
+      console.error("Failed to save to localStorage", e);
+    }
+  }, [sessions, activeSessionId]);
+
   // Auto-scroll on new message or stream chunk
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, currentStreamingText]);
+  }, [messages, currentStreamingText, isGenerating]);
 
   // Adjust textarea height
   useEffect(() => {
@@ -35,14 +86,75 @@ function App() {
     }
   }, [input]);
 
+  const handleNewChat = () => {
+    if (isGenerating) return;
+    const newSession = {
+      id: generateId(),
+      title: "New chat",
+      messages: [],
+      updatedAt: Date.now(),
+    };
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newSession.id);
+    setCurrentStreamingText("");
+    setInput("");
+    if (textareaRef.current) textareaRef.current.focus();
+  };
+
+  const handleSelectSession = (id) => {
+    if (isGenerating) return;
+    setActiveSessionId(id);
+    setCurrentStreamingText("");
+    setInput("");
+    if (textareaRef.current) textareaRef.current.focus();
+  };
+
+  const handleDeleteSession = (id, e) => {
+    e.stopPropagation();
+    if (isGenerating) return;
+
+    setSessions((prev) => {
+      const remaining = prev.filter((s) => s.id !== id);
+      if (remaining.length === 0) {
+        const fresh = {
+          id: generateId(),
+          title: "New chat",
+          messages: [],
+          updatedAt: Date.now(),
+        };
+        setActiveSessionId(fresh.id);
+        return [fresh];
+      }
+      if (id === activeSessionId) {
+        setActiveSessionId(remaining[0].id);
+      }
+      return remaining;
+    });
+  };
+
   const handleSend = async (textToSend) => {
     const text = (textToSend || input).trim();
     if (!text || isGenerating) return;
 
     const userMessage = { role: "user", content: text };
-    const updatedHistory = [...messages, userMessage];
+    const currentMessages = activeSession.messages;
+    const updatedMessages = [...currentMessages, userMessage];
 
-    setMessages(updatedHistory);
+    // Determine updated title
+    const newTitle =
+      currentMessages.length === 0
+        ? text.slice(0, 28) + (text.length > 28 ? "..." : "")
+        : activeSession.title;
+
+    // Update session with user message
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId
+          ? { ...s, title: newTitle, messages: updatedMessages, updatedAt: Date.now() }
+          : s
+      )
+    );
+
     setInput("");
     setIsGenerating(true);
     setCurrentStreamingText("");
@@ -51,7 +163,7 @@ function App() {
       const response = await fetch("/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: updatedHistory }),
+        body: JSON.stringify({ messages: updatedMessages }),
       });
 
       if (!response.ok) {
@@ -87,13 +199,37 @@ function App() {
         }
       }
 
-      setMessages((prev) => [...prev, { role: "assistant", content: fullAssistantText }]);
+      // Commit completed assistant response to session state & localStorage
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSessionId
+            ? {
+                ...s,
+                messages: [
+                  ...updatedMessages,
+                  { role: "assistant", content: fullAssistantText },
+                ],
+                updatedAt: Date.now(),
+              }
+            : s
+        )
+      );
       setCurrentStreamingText("");
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: `[Error: ${err.message}]` },
-      ]);
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSessionId
+            ? {
+                ...s,
+                messages: [
+                  ...updatedMessages,
+                  { role: "assistant", content: `[Error: ${err.message}]` },
+                ],
+                updatedAt: Date.now(),
+              }
+            : s
+        )
+      );
       setCurrentStreamingText("");
     } finally {
       setIsGenerating(false);
@@ -107,14 +243,6 @@ function App() {
     }
   };
 
-  const handleNewChat = () => {
-    setMessages([]);
-    setCurrentStreamingText("");
-    setInput("");
-    setIsGenerating(false);
-    if (textareaRef.current) textareaRef.current.focus();
-  };
-
   return (
     <div className="chatgpt-layout">
       {/* Collapsible Sidebar */}
@@ -125,7 +253,7 @@ function App() {
             onClick={() => setSidebarCollapsed(true)}
             title="Close sidebar"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
               <line x1="9" y1="3" x2="9" y2="21"></line>
             </svg>
@@ -135,7 +263,7 @@ function App() {
             onClick={handleNewChat}
             title="New chat"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 20h9"></path>
               <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
             </svg>
@@ -143,13 +271,27 @@ function App() {
         </div>
 
         <div className="sidebar-content">
-          <div className="history-group-title">Today</div>
+          <div className="history-group-title">Recent Chats</div>
           <div className="history-list">
-            <div className="history-item active" onClick={handleNewChat}>
-              <span className="history-item-text">
-                {messages.length > 0 ? messages[0].content.slice(0, 26) + "..." : "New chat"}
-              </span>
-            </div>
+            {sessions.map((session) => (
+              <div
+                key={session.id}
+                className={`history-item ${session.id === activeSessionId ? "active" : ""}`}
+                onClick={() => handleSelectSession(session.id)}
+              >
+                <span className="history-item-text">{session.title || "New chat"}</span>
+                <button
+                  className="history-delete-btn"
+                  onClick={(e) => handleDeleteSession(session.id, e)}
+                  title="Delete chat"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </button>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -158,7 +300,7 @@ function App() {
             <div className="user-avatar-circle">U</div>
             <div className="user-details">
               <span className="user-name">Local User</span>
-              <span className="user-plan">Free Plan</span>
+              <span className="user-plan">Persistent History</span>
             </div>
           </div>
         </div>
@@ -175,7 +317,7 @@ function App() {
                 onClick={() => setSidebarCollapsed(false)}
                 title="Open sidebar"
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                   <line x1="9" y1="3" x2="9" y2="21"></line>
                 </svg>
@@ -184,17 +326,17 @@ function App() {
             <div className="model-pill">
               <span className="model-title">ChatGPT</span>
               <span className="model-sub">4o mini</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <polyline points="6 9 12 15 18 9"></polyline>
               </svg>
             </div>
           </div>
 
           <div className="nav-right">
-            <button className="clear-btn" onClick={handleNewChat} title="Clear chat">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            <button className="clear-btn" onClick={handleNewChat} title="New chat">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
               </svg>
             </button>
           </div>
@@ -304,7 +446,7 @@ function App() {
                   disabled={!input.trim() || isGenerating}
                   title="Send message"
                 >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <line x1="12" y1="19" x2="12" y2="5"></line>
                     <polyline points="5 12 12 5 19 12"></polyline>
                   </svg>
@@ -349,7 +491,7 @@ function MarkdownRenderer({ content, isStreaming = false }) {
       const copyBtn = document.createElement("button");
       copyBtn.className = "copy-button";
       copyBtn.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
         </svg>
@@ -361,7 +503,7 @@ function MarkdownRenderer({ content, isStreaming = false }) {
         copyBtn.innerHTML = `<span>✓ Copied!</span>`;
         setTimeout(() => {
           copyBtn.innerHTML = `
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
@@ -382,7 +524,6 @@ function MarkdownRenderer({ content, isStreaming = false }) {
   // Insert streaming cursor inline into markdown HTML
   let parsedHtml = marked.parse(content || "");
   if (isStreaming) {
-    // If parsed HTML ends with </p>, insert the cursor inside the last <p> tag to prevent line-breaking!
     if (parsedHtml.endsWith("</p>\n") || parsedHtml.endsWith("</p>")) {
       parsedHtml = parsedHtml.replace(/<\/p>(?:\n)?$/, '<span class="streaming-cursor"></span></p>');
     } else {
