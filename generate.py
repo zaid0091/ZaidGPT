@@ -44,7 +44,15 @@ def load_model_and_tokenizer(checkpoint_path: str = None, vocab_path: str = "dat
     setup_system(config)
 
     model = ZaidGPT(config)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    
+    state_dict = checkpoint["model_state_dict"]
+    # Universal compatibility remap (net.0 -> c_fc, net.2 -> c_proj)
+    remapped_state_dict = {}
+    for k, v in state_dict.items():
+        new_k = k.replace(".mlp.net.0.", ".mlp.c_fc.").replace(".mlp.net.2.", ".mlp.c_proj.")
+        remapped_state_dict[new_k] = v
+
+    model.load_state_dict(remapped_state_dict)
     model.to(device)
     model.eval()
 
