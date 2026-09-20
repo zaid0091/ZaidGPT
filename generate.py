@@ -64,14 +64,15 @@ def generate_stream(
     model: ZaidGPT,
     tokenizer: CharacterTokenizer,
     prompt: str,
-    max_new_tokens: int = 200,
-    temperature: float = 0.7,
-    top_k: int = 30,
+    max_new_tokens: int = 300,
+    temperature: float = 0.4,
+    top_k: int = 40,
     top_p: float = 0.9,
-    delay: float = 0.015,
+    repetition_penalty: float = 1.15,
+    delay: float = 0.01,
 ):
     """
-    Streams generated tokens one character at a time with a smooth typewriter effect.
+    Streams generated tokens with repetition penalty, temperature scaling, and top-k/top-p filtering.
     """
     device = next(model.parameters()).device
     tokens = tokenizer.encode(prompt)
@@ -82,7 +83,17 @@ def generate_stream(
         idx_cond = idx if idx.size(1) <= model.config.block_size else idx[:, -model.config.block_size:]
         with torch.no_grad():
             logits, _ = model(idx_cond)
-            logits = logits[:, -1, :] / max(temperature, 1e-5)
+            logits = logits[:, -1, :]
+
+            # Apply repetition penalty to prevent repeating character loops
+            if repetition_penalty != 1.0:
+                for token_id in set(idx[0].tolist()):
+                    if logits[0, token_id] > 0:
+                        logits[0, token_id] /= repetition_penalty
+                    else:
+                        logits[0, token_id] *= repetition_penalty
+
+            logits = logits / max(temperature, 1e-5)
 
             if top_k is not None and top_k > 0:
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
@@ -116,7 +127,7 @@ def generate_stream(
 
         # Stop if user turnaround encountered in newly generated response
         new_text = tokenizer.decode(idx[0][prompt_tokens_len:])
-        if "\nUser:" in new_text or "\n\nUser" in new_text:
+        if "\nUser:" in new_text or "\n\nUser:" in new_text:
             break
 
     sys.stdout.write("\n")

@@ -28,12 +28,13 @@ else:
     print("[!] Warning: GPU not detected. Go to Runtime -> Change runtime type -> Select T4 GPU.")
 
 # -----------------------------------------------------------------------------
-# 2. Load Master Tech Stack, Coding & Encyclopedic Knowledge Dataset
+# 2. Compile & Load Master Tech Stack, Coding & Official Documentation Corpus
 # -----------------------------------------------------------------------------
 os.makedirs("data", exist_ok=True)
 data_file = "data/train.txt"
 
-if not os.path.exists(data_file) or os.path.getsize(data_file) < 50000:
+# If train.txt is small or missing, auto-scrape all real official docs & algorithms
+if not os.path.exists(data_file) or os.path.getsize(data_file) < 150000:
     print("[*] Compiling Master Knowledge, Coding & Architecture Dataset...")
     try:
         from data.download_knowledge import generate_immense_knowledge_corpus
@@ -42,6 +43,12 @@ if not os.path.exists(data_file) or os.path.getsize(data_file) < 50000:
             f.write(corpus_text)
     except Exception as e:
         print(f"[!] Note: {e}")
+    try:
+        from data.web_docs_scraper import RealWebDocsScraper
+        scraper = RealWebDocsScraper()
+        scraper.run()
+    except Exception as e:
+        print(f"[!] Scraper note: {e}")
 
 with open(data_file, "r", encoding="utf-8") as f:
     text = f.read()
@@ -68,25 +75,25 @@ val_data = data_tensor[n:]
 print(f"[*] Total Dataset Tokens: {len(data_tensor):,} | Vocab Size: {vocab_size}")
 
 # -----------------------------------------------------------------------------
-# 3. Model Architecture (GPU Scaled Preset: 6 Layers, 8 Heads, 256 Embedding Dim)
+# 3. Model Architecture (Scaled to ~12M Parameters: 8 Layers, 8 Heads, 256 Embd, 256 Block Size)
 # -----------------------------------------------------------------------------
 @dataclass
 class ColabGPTConfig:
     vocab_size: int = vocab_size
-    block_size: int = 256        # Long context window
+    block_size: int = 256        # Long 256-token context window
     n_embd: int = 256            # 256 embedding dimension
     n_head: int = 8              # 8 attention heads
-    n_layer: int = 6             # 6 Transformer blocks
+    n_layer: int = 8             # 8 Transformer blocks
     dropout: float = 0.1
     bias: bool = False
-    batch_size: int = 64         # High batch size for GPU
-    learning_rate: float = 1e-3
-    min_lr: float = 1e-4
+    batch_size: int = 64         # Batched for GPU Tensor Cores
+    learning_rate: float = 8e-4
+    min_lr: float = 8e-5
     warmup_iters: int = 200
-    max_iters: int = 3000        # 3,000 fast GPU steps
+    max_iters: int = 4000        # 4,000 deep GPU steps
     weight_decay: float = 1e-2
     eval_interval: int = 250
-    eval_iters: int = 50
+    eval_iters: int = 40
 
 config = ColabGPTConfig()
 
