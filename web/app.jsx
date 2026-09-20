@@ -1,9 +1,10 @@
 const { useState, useEffect, useRef } = React;
 
-// Escape HTML helper
+// Safe Escape HTML helper
 function escapeHtml(str) {
-  if (!str) return "";
-  return str
+  if (str === null || str === undefined) return "";
+  const s = typeof str === "string" ? str : String(str.text || str.raw || str || "");
+  return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -14,17 +15,33 @@ function escapeHtml(str) {
 // Custom Marked Renderer for Authentic ChatGPT Code Blocks
 const renderer = new marked.Renderer();
 
-renderer.code = function (code, lang) {
-  const rawLang = (lang || "").trim();
-  // Strip "language-" prefix if present
+renderer.code = function (tokenOrCode, maybeLang) {
+  let codeStr = "";
+  let langStr = "";
+
+  if (typeof tokenOrCode === "object" && tokenOrCode !== null) {
+    codeStr = tokenOrCode.text || tokenOrCode.raw || "";
+    langStr = tokenOrCode.lang || "";
+  } else {
+    codeStr = typeof tokenOrCode === "string" ? tokenOrCode : String(tokenOrCode || "");
+    langStr = typeof maybeLang === "string" ? maybeLang : "";
+  }
+
+  const rawLang = (langStr || "").trim();
   const cleanLang = rawLang.replace(/^language-/, "").toLowerCase();
   const displayLang = cleanLang || "code";
   const validLang = hljs.getLanguage(cleanLang) ? cleanLang : null;
-  const highlighted = validLang
-    ? hljs.highlight(code, { language: validLang }).value
-    : escapeHtml(code);
 
-  const encodedCode = encodeURIComponent(code);
+  let highlighted = "";
+  try {
+    highlighted = validLang
+      ? hljs.highlight(codeStr, { language: validLang }).value
+      : escapeHtml(codeStr);
+  } catch (err) {
+    highlighted = escapeHtml(codeStr);
+  }
+
+  const encodedCode = encodeURIComponent(codeStr);
 
   return `
     <div class="code-container">
