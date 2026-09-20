@@ -8,6 +8,9 @@ import os
 import sys
 from pathlib import Path
 
+# Redirect HuggingFace cache to D: drive to prevent C: drive full errors
+os.environ["HF_HOME"] = os.path.abspath(os.path.join(os.path.dirname(__file__), ".cache", "huggingface"))
+
 # Ensure UTF-8 output on Windows consoles
 if sys.platform == "win32":
     try:

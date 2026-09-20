@@ -3,9 +3,11 @@ Interactive Streaming Chat for Fine-Tuned ZaidGPT.
 Connects to the fine-tuned model and generates fluent, ChatGPT-level responses.
 """
 
+import os
 import sys
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
+
+# Redirect HuggingFace cache to D: drive to prevent C: drive full errors
+os.environ["HF_HOME"] = os.path.abspath(os.path.join(os.path.dirname(__file__), ".cache", "huggingface"))
 
 # Ensure UTF-8 output on Windows consoles
 if sys.platform == "win32":

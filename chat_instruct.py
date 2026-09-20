@@ -3,10 +3,11 @@ ZaidGPT Supercharged Instruct Assistant (Powered by Qwen2.5-0.5B-Instruct / Smol
 Provides direct, structured, ChatGPT-grade explanations and code on CPU/GPU.
 """
 
+import os
 import sys
-import argparse
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
+
+# Redirect HuggingFace cache to D: drive to prevent C: drive full errors
+os.environ["HF_HOME"] = os.path.abspath(os.path.join(os.path.dirname(__file__), ".cache", "huggingface"))
 
 # Ensure UTF-8 output on Windows consoles
 if sys.platform == "win32":
@@ -14,6 +15,10 @@ if sys.platform == "win32":
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
+
+import argparse
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
 
 
 def chat(model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"):
