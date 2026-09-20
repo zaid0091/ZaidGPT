@@ -28,21 +28,25 @@ else:
     print("[!] Warning: GPU not detected. Go to Runtime -> Change runtime type -> Select T4 GPU.")
 
 # -----------------------------------------------------------------------------
-# 2. Load Encyclopedic Knowledge Dataset (Coding, Science, History, Math, Dialogue)
+# 2. Load Master Tech Stack, Coding & Encyclopedic Knowledge Dataset
 # -----------------------------------------------------------------------------
-from data.download_knowledge import generate_immense_knowledge_corpus
-
 os.makedirs("data", exist_ok=True)
 data_file = "data/train.txt"
 
-corpus_text = generate_immense_knowledge_corpus()
-with open(data_file, "w", encoding="utf-8") as f:
-    f.write(corpus_text)
+if not os.path.exists(data_file) or os.path.getsize(data_file) < 50000:
+    print("[*] Compiling Master Knowledge, Coding & Architecture Dataset...")
+    try:
+        from data.download_knowledge import generate_immense_knowledge_corpus
+        corpus_text = generate_immense_knowledge_corpus()
+        with open(data_file, "w", encoding="utf-8") as f:
+            f.write(corpus_text)
+    except Exception as e:
+        print(f"[!] Note: {e}")
 
 with open(data_file, "r", encoding="utf-8") as f:
     text = f.read()
 
-print(f"[✓] Encyclopedic Knowledge Base Loaded! Total Characters: {len(text):,}")
+print(f"[*] Master Dataset Loaded! Total Knowledge Characters: {len(text):,}")
 
 # Build Character Tokenizer
 chars = sorted(list(set(text)))
