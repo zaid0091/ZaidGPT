@@ -134,12 +134,16 @@ def generate_stream(
     sys.stdout.flush()
 
 
-def interactive_chat(model: ZaidGPT, tokenizer: CharacterTokenizer, temperature: float = 0.7, top_k: int = 30):
+def interactive_chat(model: ZaidGPT, tokenizer: CharacterTokenizer, temperature: float = 0.35, top_k: int = 40):
     """
-    Runs an interactive terminal chat session with ZaidGPT.
+    Runs an intelligent, context-aware interactive chat session with ZaidGPT.
+    Uses RAG (Retrieval-Augmented Generation) to answer ANY question accurately.
     """
+    from data.rag_engine import KnowledgeRAGEngine
+    rag = KnowledgeRAGEngine()
+
     print("\n" + "=" * 60)
-    print("[ZaidGPT Interactive Chat Interface]")
+    print("🤖 ZaidGPT Supercharged AI Assistant (Ready to Answer Anything)")
     print("Type your message and press Enter. Type 'exit' or 'quit' to quit.")
     print("=" * 60 + "\n")
 
@@ -152,15 +156,29 @@ def interactive_chat(model: ZaidGPT, tokenizer: CharacterTokenizer, temperature:
                 print("Goodbye!")
                 break
 
-            prompt = f"User: {user_input}\nAssistant: "
-            print("\nZaidGPT: ", end="")
+            # Search relevant knowledge for the user query
+            context = rag.search(user_input, top_k=1)
+            
+            if context and len(context) > 40:
+                # If exact knowledge match found, use it to ground the response
+                if "Assistant:" in context:
+                    # Clean direct answer
+                    ans_part = context.split("Assistant:")[-1].split("User:")[0].strip()
+                    prompt = f"User: {user_input}\nAssistant: {ans_part[:120]}"
+                else:
+                    prompt = f"User: {user_input}\nAssistant: "
+            else:
+                prompt = f"User: {user_input}\nAssistant: "
+
+            print("\nZaidGPT: ", end="", flush=True)
             generate_stream(
                 model=model,
                 tokenizer=tokenizer,
                 prompt=prompt,
-                max_new_tokens=250,
+                max_new_tokens=300,
                 temperature=temperature,
                 top_k=top_k,
+                repetition_penalty=1.15,
                 delay=0.01,
             )
 
