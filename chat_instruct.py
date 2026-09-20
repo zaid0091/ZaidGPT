@@ -20,11 +20,11 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
 
 
-def chat(model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"):
+def chat(model_id: str = "HuggingFaceTB/SmolLM2-360M-Instruct"):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     print("\n" + "=" * 65)
-    print("🤖 ZaidGPT Instruct AI Assistant (ChatGPT-Grade Reasoning & Code)")
+    print("ZaidGPT Instruct AI Assistant (ChatGPT-Grade Reasoning & Code)")
     print(f"[*] Engine: {model_id} | Running on: {device.upper()}")
     print("Type your message and press Enter. Type 'exit' or 'quit' to quit.")
     print("=" * 65 + "\n")
@@ -41,7 +41,7 @@ def chat(model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"):
         if device == "cpu":
             model.to("cpu")
         model.eval()
-        print("[✓] ZaidGPT Engine is online and ready!\n")
+        print("[OK] ZaidGPT Engine is online and ready!\n")
     except Exception as e:
         print(f"[!] Error loading model {model_id}: {e}")
         return
@@ -108,8 +108,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="Qwen/Qwen2.5-0.5B-Instruct",
-        help="Foundation Instruct model (e.g., Qwen/Qwen2.5-0.5B-Instruct or HuggingFaceTB/SmolLM2-360M-Instruct)",
+        default="HuggingFaceTB/SmolLM2-360M-Instruct",
+        help="Foundation Instruct model (e.g., HuggingFaceTB/SmolLM2-360M-Instruct or Qwen/Qwen2.5-0.5B-Instruct)",
     )
     args = parser.parse_args()
     chat(model_id=args.model)
