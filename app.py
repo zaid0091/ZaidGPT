@@ -1,8 +1,3 @@
-"""
-FastAPI Streaming Server for ChatGPT Local Assistant.
-Powered by Qwen2.5-Coder-1.5B-Instruct (GGUF Q4_K_M) with AVX2 CPU acceleration via llama-cpp-python.
-"""
-
 import os
 import sys
 import json
@@ -10,6 +5,7 @@ import asyncio
 from pathlib import Path
 from typing import List, Dict
 from threading import Thread
+from contextlib import asynccontextmanager
 
 if sys.platform == "win32":
     try:
@@ -20,6 +16,7 @@ if sys.platform == "win32":
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from llama_cpp import Llama
 
@@ -27,10 +24,8 @@ MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".cache", "m
 MODEL_PATH = os.path.join(MODEL_DIR, "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf")
 MODEL_NAME = "Qwen2.5-Coder-1.5B-Instruct (GGUF Q4_K_M)"
 
-# Set optimal threads for Intel i7-1355U
 num_threads = min(os.cpu_count() or 4, 8)
 
-from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,7 +33,6 @@ async def lifespan(app: FastAPI):
     try:
         if os.path.exists(MODEL_PATH):
             llm = get_engine()
-            # 1-token warmup pass
             llm.create_chat_completion(
                 messages=[{"role": "user", "content": "Hi"}],
                 max_tokens=1,
@@ -50,9 +44,7 @@ async def lifespan(app: FastAPI):
         print("[!] Startup check:", e)
     yield
 
-from fastapi.middleware.cors import CORSMiddleware
 
-# Initialize FastAPI App with Lifespan
 app = FastAPI(title="ChatGPT Local Assistant", version="3.0", lifespan=lifespan)
 
 app.add_middleware(
@@ -63,11 +55,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount Static Files
 WEB_DIR = Path(__file__).parent / "web"
 app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
 
-# Singleton Engine
 ENGINE = {}
 
 
@@ -126,7 +116,6 @@ async def chat_stream(req: ChatRequest):
         try:
             llm = get_engine()
 
-            # Format multi-turn conversation with system prompt
             formatted_messages = [
                 {
                     "role": "system",
@@ -134,7 +123,6 @@ async def chat_stream(req: ChatRequest):
                 }
             ]
 
-            # Use sliding context window (last 6 messages) to prevent topic bleeding in multi-turn chats
             raw_history = [
                 m for m in req.messages
                 if m.get("role") in ["user", "assistant"]
@@ -183,7 +171,6 @@ async def chat_stream(req: ChatRequest):
                     if token is None:
                         break
 
-                    # Drain accumulated tokens in batch for high FPS fluid rendering
                     chunk = token
                     while not queue.empty():
                         next_tok = queue.get_nowait()

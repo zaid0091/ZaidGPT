@@ -1,8 +1,3 @@
-"""
-Terminal CLI Assistant for ChatGPT Local Engine (GGUF).
-Optimized for high-throughput multi-threaded CPU inference via llama-cpp-python.
-"""
-
 import os
 import sys
 

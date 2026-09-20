@@ -1,6 +1,5 @@
 const { useState, useEffect, useRef } = React;
 
-// Safe Escape HTML helper
 function escapeHtml(str) {
   if (str === null || str === undefined) return "";
   const s = typeof str === "string" ? str : String(str.text || str.raw || str || "");
@@ -12,7 +11,6 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
-// Custom Marked Renderer for Authentic ChatGPT Code Blocks
 const renderer = new marked.Renderer();
 
 renderer.code = function (tokenOrCode, maybeLang) {
@@ -141,7 +139,6 @@ function App() {
     displayedStreamRef.current = "";
   };
 
-  // Real-time persistence helper to continuously ensure localStorage has active generated text
   const persistCurrentStream = (sessionId, baseMessages, text, force = false) => {
     if (!sessionId || !text) return;
     const now = Date.now();
@@ -188,7 +185,6 @@ function App() {
     }
   }, [input]);
 
-  // Synchronously persist streaming text so mid-response page refreshes never lose content
   useEffect(() => {
     const handleBeforeUnload = () => {
       const activeText = streamBufferRef.current || displayedStreamRef.current;
@@ -258,7 +254,6 @@ function App() {
     setCurrentStreamingText("");
     setInput("");
 
-    // If current session is already an empty new chat, just focus
     if (activeSession && (!activeSession.messages || activeSession.messages.length === 0)) {
       if (textareaRef.current) {
         textareaRef.current.focus();
@@ -266,7 +261,6 @@ function App() {
       return;
     }
 
-    // Always create a clean fresh session at top and prune any unused empty chats
     const newSession = {
       id: generateId(),
       title: "New chat",
@@ -391,7 +385,6 @@ function App() {
     streamBufferRef.current = "";
     displayedStreamRef.current = "";
 
-    // Start 60fps smooth typewriter ticker
     streamTimerRef.current = setInterval(() => {
       const buffer = streamBufferRef.current;
       const current = displayedStreamRef.current;
@@ -406,7 +399,6 @@ function App() {
       }
     }, 16);
 
-    // Sanitize message history to exclude error notifications
     const payloadMessages = updatedMessages.filter(
       (m) =>
         m.content &&
@@ -463,7 +455,6 @@ function App() {
         }
       }
 
-      // Smoothly flush any remaining characters in the typing queue
       while (displayedStreamRef.current.length < streamBufferRef.current.length) {
         await new Promise((r) => setTimeout(r, 16));
       }
@@ -552,7 +543,6 @@ function App() {
 
   return (
     <div className="chatgpt-layout">
-      {/* Collapsible Sidebar */}
       <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
         <div className="sidebar-top">
           <button
@@ -623,9 +613,7 @@ function App() {
         </div>
       </aside>
 
-      {/* Main Workspace */}
       <main className="chat-workspace">
-        {/* Top Bar */}
         <header className="top-nav">
           <div className="nav-left">
             {sidebarCollapsed && (
@@ -659,7 +647,6 @@ function App() {
           </div>
         </header>
 
-        {/* Scrollable Viewport */}
         <div className="chat-scroll-container" ref={scrollRef}>
           {messages.length === 0 && !currentStreamingText ? (
             <div className="hero-screen">
@@ -709,7 +696,6 @@ function App() {
                 </div>
               ))}
 
-              {/* 3-Dots Typing Indicator right when message is sent */}
               {isGenerating && !currentStreamingText && (
                 <div className="message-row assistant">
                   <div className="message-body">
@@ -722,7 +708,6 @@ function App() {
                 </div>
               )}
 
-              {/* Live Streaming Response with Inline Cursor */}
               {isGenerating && currentStreamingText && (
                 <div className="message-row assistant">
                   <div className="message-body">
@@ -734,7 +719,6 @@ function App() {
           )}
         </div>
 
-        {/* Input Capsule */}
         <div className="input-area-wrapper">
           <form
             className="input-capsule-form"
@@ -780,7 +764,6 @@ function App() {
   );
 }
 
-// Markdown Renderer Component with proper code blocks & Inline Streaming Cursor (Memoized for high FPS)
 const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStreaming = false }) {
   let parsedHtml = "";
   try {
@@ -805,6 +788,5 @@ const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStrea
   );
 });
 
-// Mount React App
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App />);
