@@ -122,6 +122,7 @@ function App() {
   const streamBufferRef = useRef("");
   const displayedStreamRef = useRef("");
   const streamTimerRef = useRef(null);
+  const lastSaveTimeRef = useRef(0);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0] || {
     id: generateId(),
@@ -138,6 +139,31 @@ function App() {
     }
     streamBufferRef.current = "";
     displayedStreamRef.current = "";
+  };
+
+  // Real-time persistence helper to continuously ensure localStorage has active generated text
+  const persistCurrentStream = (sessionId, baseMessages, text, force = false) => {
+    if (!sessionId || !text) return;
+    const now = Date.now();
+    if (!force && now - lastSaveTimeRef.current < 200) return;
+    lastSaveTimeRef.current = now;
+
+    try {
+      const saved = localStorage.getItem(STORAGE_SESSIONS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const updated = parsed.map((s) => {
+          if (s.id === sessionId) {
+            const msgs = [...baseMessages, { role: "assistant", content: text }];
+            return { ...s, messages: msgs, updatedAt: now };
+          }
+          return s;
+        });
+        localStorage.setItem(STORAGE_SESSIONS_KEY, JSON.stringify(updated));
+      }
+    } catch (e) {
+      console.error("Error persisting stream to localStorage:", e);
+    }
   };
 
   useEffect(() => {
@@ -192,7 +218,11 @@ function App() {
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handleBeforeUnload);
+    };
   }, [activeSessionId]);
 
   const handleNewChat = () => {
@@ -372,6 +402,7 @@ function App() {
         const nextText = buffer.slice(0, nextLen);
         displayedStreamRef.current = nextText;
         setCurrentStreamingText(nextText);
+        persistCurrentStream(targetSessionId, updatedMessages, buffer);
       }
     }, 16);
 
@@ -411,11 +442,13 @@ function App() {
               if (data.token) {
                 fullAssistantText += data.token;
                 streamBufferRef.current = fullAssistantText;
+                persistCurrentStream(targetSessionId, updatedMessages, fullAssistantText);
               }
             } catch (err) {
               if (dataStr && !dataStr.startsWith("{")) {
                 fullAssistantText += dataStr;
                 streamBufferRef.current = fullAssistantText;
+                persistCurrentStream(targetSessionId, updatedMessages, fullAssistantText);
               }
             }
           }
@@ -428,6 +461,7 @@ function App() {
       }
 
       cleanupStream();
+      persistCurrentStream(targetSessionId, updatedMessages, fullAssistantText, true);
 
       setSessions((prev) =>
         prev.map((s) =>
@@ -450,6 +484,7 @@ function App() {
       if (err.name === "AbortError") {
         console.log("Generation aborted by user");
         if (partialText) {
+          persistCurrentStream(targetSessionId, updatedMessages, partialText, true);
           setSessions((prev) =>
             prev.map((s) =>
               s.id === targetSessionId
@@ -475,6 +510,7 @@ function App() {
           : `[Error: ${err.message}]`;
 
         const finalContent = partialText ? `${partialText}\n\n${errorMsg}` : errorMsg;
+        persistCurrentStream(targetSessionId, updatedMessages, finalContent, true);
 
         setSessions((prev) =>
           prev.map((s) =>

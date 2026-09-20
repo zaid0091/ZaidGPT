@@ -30,8 +30,28 @@ MODEL_NAME = "Qwen2.5-Coder-1.5B-Instruct (GGUF Q4_K_M)"
 # Set optimal threads for Intel i7-1355U
 num_threads = min(os.cpu_count() or 4, 8)
 
-# Initialize FastAPI App
-app = FastAPI(title="ChatGPT Local Assistant", version="3.0")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("[*] Checking Neural Engine...")
+    try:
+        if os.path.exists(MODEL_PATH):
+            llm = get_engine()
+            # 1-token warmup pass
+            llm.create_chat_completion(
+                messages=[{"role": "user", "content": "Hi"}],
+                max_tokens=1,
+            )
+            print("[OK] Neural Engine pre-warmed for instant response!")
+        else:
+            print(f"[!] Model file not found at {MODEL_PATH}...")
+    except Exception as e:
+        print("[!] Startup check:", e)
+    yield
+
+# Initialize FastAPI App with Lifespan
+app = FastAPI(title="ChatGPT Local Assistant", version="3.0", lifespan=lifespan)
 
 # Mount Static Files
 WEB_DIR = Path(__file__).parent / "web"
@@ -45,7 +65,7 @@ def get_engine():
     if "llm" not in ENGINE:
         if not os.path.exists(MODEL_PATH):
             raise FileNotFoundError(
-                f"Model file not found at {MODEL_PATH}. Please wait for the download to complete."
+                f"Model file not found at {MODEL_PATH}. Please ensure the GGUF file exists."
             )
         print(f"[*] Loading GGUF Neural Engine ({os.path.basename(MODEL_PATH)}) with {num_threads} CPU threads...")
         llm = Llama(
@@ -62,24 +82,6 @@ def get_engine():
 
 class ChatRequest(BaseModel):
     messages: List[Dict[str, str]]
-
-
-@app.on_event("startup")
-async def startup_warmup():
-    print("[*] Checking Neural Engine...")
-    try:
-        if os.path.exists(MODEL_PATH):
-            llm = get_engine()
-            # 1-token warmup
-            llm.create_chat_completion(
-                messages=[{"role": "user", "content": "Hi"}],
-                max_tokens=1,
-            )
-            print("[OK] Neural Engine pre-warmed for instant response!")
-        else:
-            print(f"[!] Model file downloading to {MODEL_PATH}...")
-    except Exception as e:
-        print("[!] Startup check:", e)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -131,6 +133,7 @@ async def chat_stream(req: ChatRequest):
 
             queue = asyncio.Queue()
             loop = asyncio.get_running_loop()
+            is_cancelled = False
 
             def run_generation():
                 try:
@@ -143,39 +146,49 @@ async def chat_stream(req: ChatRequest):
                         stream=True,
                     )
                     for chunk in response_stream:
+                        if is_cancelled:
+                            break
                         delta = chunk["choices"][0].get("delta", {})
                         content = delta.get("content", "")
                         if content:
                             loop.call_soon_threadsafe(queue.put_nowait, content)
                 except Exception as ex:
-                    loop.call_soon_threadsafe(queue.put_nowait, f"\n\n[Error: {str(ex)}]")
+                    if not is_cancelled:
+                        loop.call_soon_threadsafe(queue.put_nowait, f"\n\n[Error: {str(ex)}]")
                 finally:
                     loop.call_soon_threadsafe(queue.put_nowait, None)
 
             thread = Thread(target=run_generation, daemon=True)
             thread.start()
 
-            while True:
-                token = await queue.get()
-                if token is None:
-                    break
+            try:
+                while True:
+                    token = await queue.get()
+                    if token is None:
+                        break
 
-                # Drain accumulated tokens in batch for high FPS fluid rendering
-                chunk = token
-                while not queue.empty():
-                    next_tok = queue.get_nowait()
-                    if next_tok is None:
-                        payload = json.dumps({"token": chunk})
-                        yield f"data: {payload}\n\n"
-                        yield "data: [DONE]\n\n"
-                        return
-                    chunk += next_tok
+                    # Drain accumulated tokens in batch for high FPS fluid rendering
+                    chunk = token
+                    while not queue.empty():
+                        next_tok = queue.get_nowait()
+                        if next_tok is None:
+                            payload = json.dumps({"token": chunk})
+                            yield f"data: {payload}\n\n"
+                            yield "data: [DONE]\n\n"
+                            return
+                        chunk += next_tok
 
-                payload = json.dumps({"token": chunk})
-                yield f"data: {payload}\n\n"
+                    payload = json.dumps({"token": chunk})
+                    yield f"data: {payload}\n\n"
 
-            yield "data: [DONE]\n\n"
+                yield "data: [DONE]\n\n"
 
+            except (asyncio.CancelledError, GeneratorExit):
+                is_cancelled = True
+                return
+
+        except (asyncio.CancelledError, GeneratorExit):
+            return
         except Exception as e:
             err_payload = json.dumps({"token": f"\n\n[Error: {str(e)}]"})
             yield f"data: {err_payload}\n\n"
