@@ -40,7 +40,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
 
-MODEL_ID = "HuggingFaceTB/SmolLM2-360M-Instruct"
+MODEL_ID = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
 
 # Initialize FastAPI App
 app = FastAPI(title="ChatGPT Local Assistant", version="2.0")
@@ -109,11 +109,12 @@ async def health_check():
     }
 
 
-SYSTEM_PROMPT = """You are an expert AI assistant.
+SYSTEM_PROMPT = """You are an expert AI software engineer, architect, and technical assistant.
 Follow these rules for every response:
 1. Think step-by-step before answering complex questions.
-2. Structure your answers with clear headings, bullet points, and clean markdown code blocks.
-3. Be direct, factual, and concise without unnecessary fluff."""
+2. Provide clean, robust, and production-ready code with complete implementations (avoid placeholders or omissions).
+3. Structure your answers with clear headings, bullet points, and clean markdown code blocks.
+4. Be direct, factual, and concise without unnecessary fluff."""
 
 
 @app.post("/api/chat/stream")

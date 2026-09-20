@@ -29,7 +29,7 @@ import argparse
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
 
 
-def chat(model_id: str = "HuggingFaceTB/SmolLM2-360M-Instruct"):
+def chat(model_id: str = "Qwen/Qwen2.5-Coder-1.5B-Instruct"):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     print("\n" + "=" * 65)
@@ -44,7 +44,8 @@ def chat(model_id: str = "HuggingFaceTB/SmolLM2-360M-Instruct"):
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
             cache_dir=CACHE_DIR,
-            dtype=torch.float32,
+            dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
         )
         if device == "cpu":
             model.to("cpu")
