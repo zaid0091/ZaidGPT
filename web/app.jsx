@@ -1,13 +1,58 @@
 const { useState, useEffect, useRef } = React;
 
-// Configure Marked options
+// Escape HTML helper
+function escapeHtml(str) {
+  if (!str) return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// Custom Marked Renderer for Authentic ChatGPT Code Blocks
+const renderer = new marked.Renderer();
+
+renderer.code = function (code, lang) {
+  const rawLang = (lang || "").trim();
+  // Strip "language-" prefix if present
+  const cleanLang = rawLang.replace(/^language-/, "").toLowerCase();
+  const displayLang = cleanLang || "code";
+  const validLang = hljs.getLanguage(cleanLang) ? cleanLang : null;
+  const highlighted = validLang
+    ? hljs.highlight(code, { language: validLang }).value
+    : escapeHtml(code);
+
+  const encodedCode = encodeURIComponent(code);
+
+  return `
+    <div class="code-container">
+      <div class="code-header-bar">
+        <span class="code-lang-text">${escapeHtml(displayLang)}</span>
+        <button class="copy-button" onclick="(function(btn){
+          navigator.clipboard.writeText(decodeURIComponent('${encodedCode}'));
+          btn.innerHTML='<svg width=\\'14\\' height=\\'14\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'2\\'><polyline points=\\'20 6 9 17 4 12\\'></polyline></svg><span>Copied!</span>';
+          setTimeout(function(){
+            btn.innerHTML='<svg width=\\'14\\' height=\\'14\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'2\\'><rect x=\\'9\\' y=\\'9\\' width=\\'13\\' height=\\'13\\' rx=\\'2\\' ry=\\'2\\'></rect><path d=\\'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\\'></path></svg><span>Copy code</span>';
+          }, 2000);
+        })(this)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <span>Copy code</span>
+        </button>
+      </div>
+      <pre><code class="hljs ${validLang || ''}">${highlighted}</code></pre>
+    </div>
+  `;
+};
+
 marked.setOptions({
+  renderer: renderer,
   breaks: true,
   gfm: true,
-  highlight: function (code, lang) {
-    const language = hljs.getLanguage(lang) ? lang : "plaintext";
-    return hljs.highlight(code, { language }).value;
-  },
 });
 
 const STORAGE_SESSIONS_KEY = "chatgpt_local_sessions";
@@ -57,11 +102,9 @@ function App() {
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
 
-  // Active session object
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
   const messages = activeSession ? activeSession.messages : [];
 
-  // Persist sessions to localStorage whenever sessions or activeSessionId change
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_SESSIONS_KEY, JSON.stringify(sessions));
@@ -71,14 +114,12 @@ function App() {
     }
   }, [sessions, activeSessionId]);
 
-  // Auto-scroll on new message or stream chunk
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, currentStreamingText, isGenerating]);
 
-  // Adjust textarea height
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -140,13 +181,11 @@ function App() {
     const currentMessages = activeSession.messages;
     const updatedMessages = [...currentMessages, userMessage];
 
-    // Determine updated title
     const newTitle =
       currentMessages.length === 0
         ? text.slice(0, 28) + (text.length > 28 ? "..." : "")
         : activeSession.title;
 
-    // Update session with user message
     setSessions((prev) =>
       prev.map((s) =>
         s.id === activeSessionId
@@ -199,7 +238,6 @@ function App() {
         }
       }
 
-      // Commit completed assistant response to session state & localStorage
       setSessions((prev) =>
         prev.map((s) =>
           s.id === activeSessionId
@@ -465,64 +503,8 @@ function App() {
 
 // Markdown Renderer Component with proper code blocks & Inline Streaming Cursor
 function MarkdownRenderer({ content, isStreaming = false }) {
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    // Attach copy button listeners to any rendered code blocks
-    const codeBlocks = containerRef.current.querySelectorAll("pre code");
-    codeBlocks.forEach((block) => {
-      hljs.highlightElement(block);
-
-      const pre = block.parentElement;
-      if (pre.parentElement.classList.contains("code-container")) return;
-
-      const wrapper = document.createElement("div");
-      wrapper.className = "code-container";
-
-      const header = document.createElement("div");
-      header.className = "code-header-bar";
-
-      const lang = block.className.replace("hljs language-", "") || "code";
-      const langSpan = document.createElement("span");
-      langSpan.textContent = lang;
-
-      const copyBtn = document.createElement("button");
-      copyBtn.className = "copy-button";
-      copyBtn.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-        </svg>
-        <span>Copy code</span>
-      `;
-
-      copyBtn.addEventListener("click", () => {
-        navigator.clipboard.writeText(block.innerText);
-        copyBtn.innerHTML = `<span>✓ Copied!</span>`;
-        setTimeout(() => {
-          copyBtn.innerHTML = `
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-            <span>Copy code</span>
-          `;
-        }, 2000);
-      });
-
-      header.appendChild(langSpan);
-      header.appendChild(copyBtn);
-
-      pre.parentNode.insertBefore(wrapper, pre);
-      wrapper.appendChild(header);
-      wrapper.appendChild(pre);
-    });
-  }, [content, isStreaming]);
-
-  // Insert streaming cursor inline into markdown HTML
   let parsedHtml = marked.parse(content || "");
+
   if (isStreaming) {
     if (parsedHtml.endsWith("</p>\n") || parsedHtml.endsWith("</p>")) {
       parsedHtml = parsedHtml.replace(/<\/p>(?:\n)?$/, '<span class="streaming-cursor"></span></p>');
@@ -533,7 +515,6 @@ function MarkdownRenderer({ content, isStreaming = false }) {
 
   return (
     <div
-      ref={containerRef}
       className="markdown-content"
       dangerouslySetInnerHTML={{ __html: parsedHtml }}
     />
