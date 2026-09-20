@@ -21,8 +21,8 @@ from pydantic import BaseModel
 from llama_cpp import Llama
 
 MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".cache", "models"))
-MODEL_PATH = os.path.join(MODEL_DIR, "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf")
-MODEL_NAME = "Qwen2.5-Coder-1.5B-Instruct (GGUF Q4_K_M)"
+MODEL_PATH = os.path.join(MODEL_DIR, "qwen2.5-coder-7b-instruct-q4_k_m.gguf")
+MODEL_NAME = "Qwen2.5-Coder-7B-Instruct (GGUF Q4_K_M)"
 
 num_threads = min(os.cpu_count() or 4, 8)
 

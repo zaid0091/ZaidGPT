@@ -10,7 +10,7 @@ if sys.platform == "win32":
 from llama_cpp import Llama
 
 MODEL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".cache", "models"))
-DEFAULT_MODEL_PATH = os.path.join(MODEL_DIR, "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf")
+DEFAULT_MODEL_PATH = os.path.join(MODEL_DIR, "qwen2.5-coder-7b-instruct-q4_k_m.gguf")
 
 num_threads = min(os.cpu_count() or 4, 8)
 
