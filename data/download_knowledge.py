@@ -13,8 +13,17 @@ import os
 from pathlib import Path
 
 
+try:
+    from data.tech_stack_docs import TECH_DOCS
+except (ImportError, ModuleNotFoundError):
+    import sys
+    sys.path.append(str(Path(__file__).parent.parent))
+    from data.tech_stack_docs import TECH_DOCS
+
 def generate_immense_knowledge_corpus() -> str:
     sections = []
+    # Add Tech Docs First
+    sections.append(TECH_DOCS)
 
     # =========================================================================
     # 1. IDENTITY & CONVERSATIONAL INTELLIGENCE
