@@ -16,24 +16,29 @@ def load_model_and_tokenizer(checkpoint_path: str = None, vocab_path: str = "dat
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
     if checkpoint_path is None:
-        if Path("checkpoints/zaidgpt_latest.pt").exists():
-            checkpoint_path = "checkpoints/zaidgpt_latest.pt"
-        else:
+        if Path("checkpoints/zaidgpt_colab_best.pt").exists():
+            checkpoint_path = "checkpoints/zaidgpt_colab_best.pt"
+        elif Path("checkpoints/zaidgpt_best.pt").exists():
             checkpoint_path = "checkpoints/zaidgpt_best.pt"
+        else:
+            checkpoint_path = "checkpoints/zaidgpt_latest.pt"
 
-    # 1. Load Tokenizer
-    vocab_file = Path(vocab_path)
-    if not vocab_file.exists():
-        raise FileNotFoundError(f"Vocabulary file not found at {vocab_path}. Please run train.py first to build the vocabulary.")
-    
-    tokenizer = CharacterTokenizer(vocab_file=vocab_file)
-
-    # 2. Load Model Checkpoint
     ckpt_file = Path(checkpoint_path)
     if not ckpt_file.exists():
-        raise FileNotFoundError(f"Checkpoint file not found at {checkpoint_path}. Please run train.py first to train ZaidGPT.")
+        raise FileNotFoundError(f"Checkpoint file not found at {checkpoint_path}.")
 
     checkpoint = torch.load(ckpt_file, map_location=device, weights_only=False)
+
+    # 1. Load Tokenizer: Prefer vocab embedded directly inside checkpoint
+    if "vocab" in checkpoint:
+        tokenizer = CharacterTokenizer()
+        tokenizer.vocab = checkpoint["vocab"]
+        tokenizer.stoi = {ch: i for i, ch in enumerate(tokenizer.vocab)}
+        tokenizer.itos = {i: ch for i, ch in enumerate(tokenizer.vocab)}
+    elif Path(vocab_path).exists():
+        tokenizer = CharacterTokenizer(vocab_file=Path(vocab_path))
+    else:
+        raise FileNotFoundError(f"Vocabulary file not found at {vocab_path}.")
     raw_config = checkpoint["config"]
     if isinstance(raw_config, dict):
         config = GPTConfig(**raw_config)

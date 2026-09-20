@@ -261,6 +261,7 @@ for iter_num in range(1, config.max_iters + 1):
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "config": asdict(config),
+                "vocab": chars,
                 "iter_num": iter_num,
                 "best_val_loss": best_val_loss,
             }, "checkpoints/zaidgpt_colab_best.pt")

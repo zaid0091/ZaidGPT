@@ -114,10 +114,11 @@ def train(preset: str = "tiny", max_iters: int = None):
                     "optimizer_state_dict": optimizer.state_dict(),
                     "iter_num": iter_num,
                     "best_val_loss": best_val_loss,
+                    "vocab": dataset.tokenizer.vocab,
                     "config": asdict(config),
                 }
                 torch.save(checkpoint, checkpoint_path)
-                print(f"  [*] Saved best checkpoint: val_loss={best_val_loss:.4f} -> {checkpoint_path}")
+                print(f"  [*] Saved best checkpoint: val_loss={best_val_loss:.4f} -> {checkpoint_path}", flush=True)
 
             # Save latest checkpoint periodically after meaningful learning
             if iter_num >= 100:
@@ -129,6 +130,7 @@ def train(preset: str = "tiny", max_iters: int = None):
                     "iter_num": iter_num,
                     "val_loss": losses["val"],
                     "train_loss": losses["train"],
+                    "vocab": dataset.tokenizer.vocab,
                     "config": asdict(config),
                 }, latest_path)
 
