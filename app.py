@@ -121,13 +121,17 @@ async def chat_stream(req: ChatRequest):
                     "role": "system",
                     "content": (
                         "You are a helpful, concise, and knowledgeable AI assistant. "
-                        "Provide direct, structured, and helpful answers with clean markdown and code blocks."
+                        "Directly, accurately, and strictly answer the user's latest query with clean markdown."
                     ),
                 }
             ]
-            for m in req.messages:
-                if m.get("role") in ["user", "assistant"]:
-                    formatted_messages.append({"role": m["role"], "content": m["content"]})
+
+            # Use sliding context window (last 6 messages) to prevent topic bleeding in multi-turn chats
+            raw_history = [m for m in req.messages if m.get("role") in ["user", "assistant"]]
+            recent_history = raw_history[-6:] if len(raw_history) > 6 else raw_history
+
+            for m in recent_history:
+                formatted_messages.append({"role": m["role"], "content": m["content"]})
 
             prompt_text = tokenizer.apply_chat_template(
                 formatted_messages,
@@ -138,12 +142,13 @@ async def chat_stream(req: ChatRequest):
             inputs = tokenizer(prompt_text, return_tensors="pt")
             streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
 
-            # High-speed greedy search with KV-caching
+            # High-speed greedy search with repetition penalty & KV-caching
             gen_kwargs = dict(
                 **inputs,
                 streamer=streamer,
                 max_new_tokens=384,
                 do_sample=False,
+                repetition_penalty=1.15,
                 use_cache=True,  # KV-Cache for O(1) step inference
                 pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.eos_token_id,

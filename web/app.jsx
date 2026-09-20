@@ -182,24 +182,14 @@ function App() {
       return;
     }
 
-    // Check if there is already an empty session in the list
-    const existingEmpty = sessions.find((s) => !s.messages || s.messages.length === 0);
-    if (existingEmpty) {
-      setActiveSessionId(existingEmpty.id);
-      if (textareaRef.current) {
-        setTimeout(() => textareaRef.current && textareaRef.current.focus(), 50);
-      }
-      return;
-    }
-
-    // Create fresh session
+    // Always create a clean fresh session at top and prune any unused empty chats
     const newSession = {
       id: generateId(),
       title: "New chat",
       messages: [],
       updatedAt: Date.now(),
     };
-    setSessions((prev) => [newSession, ...prev]);
+    setSessions((prev) => [newSession, ...prev.filter((s) => s.messages && s.messages.length > 0)]);
     setActiveSessionId(newSession.id);
     if (textareaRef.current) {
       setTimeout(() => textareaRef.current && textareaRef.current.focus(), 50);
